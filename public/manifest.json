@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Coppel Select VIP",
+  "short_name": "CoppelSelect",
+  "description": "Experiencia móvil VIP para clientes Coppel Select: citas exclusivas, tarjeta Navy VIP, lealtad y kiosco express.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#002B66",
+  "theme_color": "#002B66",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

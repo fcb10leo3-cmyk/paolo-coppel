@@ -1,0 +1,8 @@
+{
+  "name": "Remix Coppel Select \u0026 Premium Experience",
+  "description": "Aplicación móvil y experiencia VIP para clientes Coppel Select: citas exclusivas en zona lounge, billetera con tarjeta Navy VIP, lealtad y checkout rápido con kiosco digital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

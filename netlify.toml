@@ -1,0 +1,26 @@
+# Netlify Configuration for Coppel Kiosk & Mobile Sync
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# Single Page Application routing (SPA redirect fallback)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Security & Cache Headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
