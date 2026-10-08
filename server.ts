@@ -23,6 +23,11 @@ interface EmployeeRecord {
   rating: number;
   totalHelpedToday: number;
   badge?: string;
+  points: number;
+  successfulAssistsToday: number;
+  level: number;
+  levelTitle: string;
+  streak: number;
 }
 
 interface AssistanceAlertRecord {
@@ -62,6 +67,11 @@ let employeesList: EmployeeRecord[] = [
     rating: 4.9,
     totalHelpedToday: 14,
     badge: 'Top Asesora',
+    points: 1450,
+    successfulAssistsToday: 14,
+    level: 3,
+    levelTitle: 'Especialista Plata',
+    streak: 5,
   },
   {
     id: 'emp-02',
@@ -76,6 +86,11 @@ let employeesList: EmployeeRecord[] = [
     rating: 4.8,
     totalHelpedToday: 19,
     badge: 'Tech Guru',
+    points: 1920,
+    successfulAssistsToday: 18,
+    level: 4,
+    levelTitle: 'Master Oro',
+    streak: 6,
   },
   {
     id: 'emp-03',
@@ -90,6 +105,11 @@ let employeesList: EmployeeRecord[] = [
     rating: 5.0,
     totalHelpedToday: 22,
     badge: 'Servicio Estrella',
+    points: 2280,
+    successfulAssistsToday: 22,
+    level: 4,
+    levelTitle: 'Master Oro',
+    streak: 9,
   },
   {
     id: 'emp-04',
@@ -103,6 +123,11 @@ let employeesList: EmployeeRecord[] = [
     phone: '55 9876 5432',
     rating: 4.7,
     totalHelpedToday: 9,
+    points: 920,
+    successfulAssistsToday: 8,
+    level: 2,
+    levelTitle: 'Asesor Bronce',
+    streak: 2,
   },
   {
     id: 'emp-05',
@@ -116,6 +141,11 @@ let employeesList: EmployeeRecord[] = [
     phone: '55 3456 7890',
     rating: 4.9,
     totalHelpedToday: 11,
+    points: 1180,
+    successfulAssistsToday: 11,
+    level: 3,
+    levelTitle: 'Especialista Plata',
+    streak: 4,
   },
 ];
 
@@ -523,6 +553,14 @@ async function startServer() {
         if (emp) {
           emp.totalHelpedToday += 1;
           emp.status = 'disponible';
+          const pointsToAdd = outcome === 'resuelto_exitoso' ? 100 : 10;
+          emp.points = (emp.points || 0) + pointsToAdd;
+          if (outcome === 'resuelto_exitoso') {
+            emp.successfulAssistsToday = (emp.successfulAssistsToday || 0) + 1;
+            emp.streak = (emp.streak || 0) + 1;
+          } else {
+            emp.streak = 0;
+          }
         }
       }
 
@@ -649,6 +687,33 @@ async function startServer() {
     res.json({
       success: true,
       message: 'Solicitud de asistencia cancelada.',
+    });
+  });
+
+  // Otorgar bono de supervisor a empleado
+  app.post('/api/employees/bonus', (req: Request, res: Response) => {
+    const { employeeId, bonusPoints, reason } = req.body;
+    const emp = employeesList.find((e) => e.id === employeeId);
+    if (!emp) {
+      return res.status(404).json({ success: false, message: 'Empleado no encontrado' });
+    }
+
+    const pts = parseInt(bonusPoints, 10) || 50;
+    emp.points = (emp.points || 0) + pts;
+
+    broadcastSSE({
+      type: 'bonus_awarded',
+      employeeId,
+      employeeName: emp.name,
+      bonusPoints: pts,
+      reason: reason || 'Reconocimiento del Supervisor',
+      employees: employeesList,
+    });
+
+    res.json({
+      success: true,
+      message: `Bono de +${pts} puntos otorgado a ${emp.name}`,
+      employee: emp,
     });
   });
 

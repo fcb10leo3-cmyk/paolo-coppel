@@ -16,6 +16,15 @@ export interface Employee {
   totalHelpedToday: number;
   badge?: string;
   currentActiveAlertId?: string;
+  // Gamificación y Puntos por Asistencia
+  points: number;
+  successfulAssistsToday: number;
+  unsuccessfulAssistsToday?: number;
+  level: number;
+  levelTitle: string;
+  streak: number;
+  badges?: string[];
+  recentPointsDelta?: number;
 }
 
 export interface AssistanceAlert {

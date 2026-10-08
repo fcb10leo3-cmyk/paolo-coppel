@@ -1,4 +1,5 @@
 import { Employee, AssistanceAlert, ResolutionOutcome } from '../types';
+import { getGamificationLevel, calculatePointsForAssistance } from './gamification';
 
 export const INITIAL_EMPLOYEES: Employee[] = [
   {
@@ -14,6 +15,13 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     rating: 4.9,
     totalHelpedToday: 14,
     badge: 'Top Asesora',
+    points: 1450,
+    successfulAssistsToday: 14,
+    unsuccessfulAssistsToday: 0,
+    level: 3,
+    levelTitle: 'Especialista Plata',
+    streak: 5,
+    badges: ['Top Asesora', 'Crédito Rápido', 'Atención 5★'],
   },
   {
     id: 'emp-02',
@@ -28,6 +36,13 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     rating: 4.8,
     totalHelpedToday: 19,
     badge: 'Tech Guru',
+    points: 1920,
+    successfulAssistsToday: 18,
+    unsuccessfulAssistsToday: 1,
+    level: 4,
+    levelTitle: 'Master Oro',
+    streak: 6,
+    badges: ['Tech Guru', 'Rayo Veloz', 'Master Celulares'],
   },
   {
     id: 'emp-03',
@@ -42,6 +57,13 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     rating: 5.0,
     totalHelpedToday: 22,
     badge: 'Servicio Estrella',
+    points: 2280,
+    successfulAssistsToday: 22,
+    unsuccessfulAssistsToday: 0,
+    level: 4,
+    levelTitle: 'Master Oro',
+    streak: 9,
+    badges: ['Servicio Estrella', 'Racha Imparable', '100% Satisfacción'],
   },
   {
     id: 'emp-04',
@@ -55,6 +77,13 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     phone: '55 9876 5432',
     rating: 4.7,
     totalHelpedToday: 9,
+    points: 920,
+    successfulAssistsToday: 8,
+    unsuccessfulAssistsToday: 1,
+    level: 2,
+    levelTitle: 'Asesor Bronce',
+    streak: 2,
+    badges: ['Especialista Muebles'],
   },
   {
     id: 'emp-05',
@@ -68,6 +97,13 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     phone: '55 3456 7890',
     rating: 4.9,
     totalHelpedToday: 11,
+    points: 1180,
+    successfulAssistsToday: 11,
+    unsuccessfulAssistsToday: 0,
+    level: 3,
+    levelTitle: 'Especialista Plata',
+    streak: 4,
+    badges: ['Moda & Tendencias', 'Calzado Pro'],
   },
 ];
 
@@ -153,10 +189,27 @@ class StaffSyncService {
           // Si estaba en la lista de resueltos, no revivirla
           const finalActive = active && !this.resolvedAlertIds.has(active.id) ? active : null;
 
+          const rawEmployees = Array.isArray(parsed.employees) && parsed.employees.length > 0 ? parsed.employees : INITIAL_EMPLOYEES;
+          const employees: Employee[] = rawEmployees.map((emp: any) => {
+            const defaultEmp = INITIAL_EMPLOYEES.find((e) => e.id === emp.id) || INITIAL_EMPLOYEES[0];
+            const points = typeof emp.points === 'number' ? emp.points : (defaultEmp?.points ?? 1000);
+            const lvl = getGamificationLevel(points);
+            return {
+              ...defaultEmp,
+              ...emp,
+              points,
+              successfulAssistsToday: typeof emp.successfulAssistsToday === 'number' ? emp.successfulAssistsToday : (defaultEmp?.successfulAssistsToday ?? emp.totalHelpedToday ?? 10),
+              unsuccessfulAssistsToday: typeof emp.unsuccessfulAssistsToday === 'number' ? emp.unsuccessfulAssistsToday : (defaultEmp?.unsuccessfulAssistsToday ?? 0),
+              streak: typeof emp.streak === 'number' ? emp.streak : (defaultEmp?.streak ?? 3),
+              level: lvl.level,
+              levelTitle: lvl.title,
+            };
+          });
+
           return {
             activeCall: finalActive,
             history: Array.isArray(parsed.history) ? parsed.history : [],
-            employees: Array.isArray(parsed.employees) && parsed.employees.length > 0 ? parsed.employees : INITIAL_EMPLOYEES,
+            employees,
           };
         }
       } catch {
@@ -233,7 +286,23 @@ class StaffSyncService {
           }
 
           if (data.history) this.state.history = data.history;
-          if (data.employees) this.state.employees = data.employees;
+          if (data.employees && Array.isArray(data.employees)) {
+            this.state.employees = data.employees.map((emp: any) => {
+              const localEmp = this.state.employees.find((e) => e.id === emp.id) || INITIAL_EMPLOYEES.find((e) => e.id === emp.id);
+              const points = typeof emp.points === 'number' ? emp.points : (localEmp?.points ?? 1000);
+              const lvl = getGamificationLevel(points);
+              return {
+                ...localEmp,
+                ...emp,
+                points,
+                successfulAssistsToday: typeof emp.successfulAssistsToday === 'number' ? emp.successfulAssistsToday : (localEmp?.successfulAssistsToday ?? emp.totalHelpedToday ?? 10),
+                unsuccessfulAssistsToday: typeof emp.unsuccessfulAssistsToday === 'number' ? emp.unsuccessfulAssistsToday : (localEmp?.unsuccessfulAssistsToday ?? 0),
+                streak: typeof emp.streak === 'number' ? emp.streak : (localEmp?.streak ?? 3),
+                level: lvl.level,
+                levelTitle: lvl.title,
+              };
+            });
+          }
           this.saveState();
 
           return {
@@ -481,7 +550,20 @@ class StaffSyncService {
     const timeStr = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
     // Actualizar historial local
+    let pointsAwardedInfo: any = null;
+
     if (currentActive) {
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - (currentActive.createdAt || Date.now())) / 1000));
+      const targetEmpId = currentActive.assignedAssociateId || 'emp-01';
+      const emp = this.state.employees.find((e) => e.id === targetEmpId) || this.state.employees[0];
+
+      const pointsCalc = calculatePointsForAssistance({
+        outcome,
+        elapsedSeconds,
+        currentStreak: emp.streak || 0,
+      });
+      pointsAwardedInfo = pointsCalc;
+
       const existing = this.state.history.find((a) => a.id === currentActive.id);
       if (existing) {
         existing.status = 'resolved';
@@ -498,13 +580,22 @@ class StaffSyncService {
         });
       }
 
-      // Si el asesor estaba asignado, sumar estadística y liberarlo
-      if (currentActive.assignedAssociateId) {
-        const emp = this.state.employees.find((e) => e.id === currentActive.assignedAssociateId);
-        if (emp) {
-          emp.totalHelpedToday += 1;
-          emp.status = 'disponible';
+      // Sumar estadísticas de gamificación y puntos al asesor
+      if (emp) {
+        emp.totalHelpedToday += 1;
+        emp.status = 'disponible';
+        emp.points = (emp.points || 0) + pointsCalc.totalPoints;
+        if (outcome === 'resuelto_exitoso') {
+          emp.successfulAssistsToday = (emp.successfulAssistsToday || 0) + 1;
+          emp.streak = (emp.streak || 0) + 1;
+        } else {
+          emp.unsuccessfulAssistsToday = (emp.unsuccessfulAssistsToday || 0) + 1;
+          emp.streak = 0;
         }
+        const lvl = getGamificationLevel(emp.points);
+        emp.level = lvl.level;
+        emp.levelTitle = lvl.title;
+        emp.recentPointsDelta = pointsCalc.totalPoints;
       }
     } else if (targetId) {
       const match = this.state.history.find((a) => a.id === targetId);
@@ -529,10 +620,34 @@ class StaffSyncService {
           alertId: targetId,
           outcome,
           resolutionNotes,
+          pointsAwarded: pointsAwardedInfo?.totalPoints || 100,
         }),
       }).catch(() => {});
     } catch {
       // ignore
+    }
+  }
+
+  // Otorgar bono de puntos manual por parte del Administrador / Supervisor
+  public async awardBonusPoints(employeeId: string, bonusPoints: number, reason: string = 'Reconocimiento del Supervisor'): Promise<void> {
+    const emp = this.state.employees.find((e) => e.id === employeeId);
+    if (emp) {
+      emp.points = (emp.points || 0) + bonusPoints;
+      const lvl = getGamificationLevel(emp.points);
+      emp.level = lvl.level;
+      emp.levelTitle = lvl.title;
+      emp.recentPointsDelta = bonusPoints;
+      this.saveState();
+
+      try {
+        fetch('/api/employees/bonus', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ employeeId, bonusPoints, reason }),
+        }).catch(() => {});
+      } catch {
+        // ignore
+      }
     }
   }
 

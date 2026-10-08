@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Employee, AssistanceAlert, ResolutionOutcome } from '../types';
-import { staffSync } from '../services/kioskSync';
+import { staffSync, INITIAL_EMPLOYEES } from '../services/kioskSync';
 import { soundEffects } from '../services/soundEffects';
 import { voice } from '../services/voice';
 import { ResolutionOutcomeModal } from './ResolutionOutcomeModal';
+import { AdminGamificationLeaderboard } from './AdminGamificationLeaderboard';
+import { getLevelProgress } from '../services/gamification';
 
 interface AdminDashboardViewProps {
   onSwitchToStaffRole?: () => void;
@@ -16,10 +18,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 }) => {
   const [activeCall, setActiveCall] = useState<AssistanceAlert | null>(null);
   const [alertsHistory, setAlertsHistory] = useState<AssistanceAlert[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    const list = staffSync.getState()?.employees;
+    return list && list.length > 0 ? list : INITIAL_EMPLOYEES;
+  });
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'live' | 'team' | 'history'>('live');
+  const [activeTab, setActiveTab] = useState<'live' | 'gamification' | 'team' | 'history'>('live');
   const [isSimulatingCall, setIsSimulatingCall] = useState<boolean>(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState<boolean>(false);
   const [isOutcomeModalOpen, setIsOutcomeModalOpen] = useState<boolean>(false);
@@ -165,6 +170,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const enPisoEmployees = employees.filter((e) => e.status === 'en_piso');
   const busyEmployees = employees.filter((e) => e.status === 'ocupado');
 
+  const totalStorePoints = employees.reduce((acc, curr) => acc + (curr.points || 0), 0);
+  const sortedByPoints = [...employees].sort((a, b) => (b.points || 0) - (a.points || 0));
+  const topAdvisor = sortedByPoints[0];
+
+  const handleAwardBonus = async (empId: string, points: number, reason: string) => {
+    await staffSync.awardBonusPoints(empId, points, reason);
+  };
+
   return (
     <div className="w-full max-w-6xl mx-auto p-2 sm:p-4 md:p-6 space-y-4 sm:space-y-6 select-none">
       {/* 1. HEADER DE SUPERVISIÓN COPPEL */}
@@ -256,39 +269,139 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </span>
         </div>
 
+        <div
+          onClick={() => setActiveTab('gamification')}
+          className="bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/40 border border-amber-500/40 hover:border-amber-400 rounded-2xl p-3.5 sm:p-4 cursor-pointer transition-all hover:scale-[1.01] shadow-lg group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-amber-300 uppercase font-black tracking-wider block">
+              Puntos de Asesores
+            </span>
+            <span className="text-[9px] bg-amber-400/20 text-amber-300 px-1.5 py-0.2 rounded font-black border border-amber-400/30">
+              🏆 Gamificación
+            </span>
+          </div>
+          <div className="flex items-baseline space-x-1.5 mt-1">
+            <span className="text-2xl sm:text-3xl font-black text-white font-mono group-hover:text-amber-300 transition-colors">
+              {totalStorePoints.toLocaleString()}
+            </span>
+            <span className="text-xs text-amber-400 font-bold">PTS</span>
+          </div>
+          <span className="text-[10px] text-slate-400 font-medium mt-0.5 block truncate">
+            Top #1: <strong className="text-amber-300">{topAdvisor?.name.split(' ')[0]}</strong> ({topAdvisor?.points.toLocaleString()} pts)
+          </span>
+        </div>
+
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 sm:p-4">
           <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">
-            Atenciones Resueltas Hoy
+            Atenciones Resueltas
           </span>
           <div className="flex items-baseline space-x-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-black text-white">
+            <span className="text-2xl sm:text-3xl font-black text-cyan-400">
               {alertsHistory.filter((a) => a.status === 'resolved').length + 75}
             </span>
             <span className="text-xs text-emerald-400 font-bold">98.2% éxito</span>
           </div>
           <span className="text-[10px] text-slate-400 font-medium mt-0.5 block">
-            Meta diaria: 60 atenciones
-          </span>
-        </div>
-
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 sm:p-4">
-          <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">
-            SLA Tiempo de Respuesta
-          </span>
-          <div className="flex items-baseline space-x-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-black text-cyan-400">
-              24s
-            </span>
-            <span className="text-xs text-slate-500 font-bold">&lt; 30s meta</span>
-          </div>
-          <span className="text-[10px] text-cyan-400/80 font-medium mt-0.5 block">
-            ★ Calificación cliente: 4.9 / 5
+            SLA: 24s promedio · ★ 4.9/5
           </span>
         </div>
       </div>
 
-      {/* 3. ALERTA ACTIVA EN TIEMPO REAL (ZONA CRÍTICA DE DESPACHO) */}
-      <div className="space-y-3">
+      {/* 2.1 SELECTOR DE VISTAS DEL ADMINISTRADOR */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-1.5 flex flex-wrap items-center gap-1.5 shadow-lg">
+        <button
+          type="button"
+          onClick={() => setActiveTab('live')}
+          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+            activeTab === 'live'
+              ? 'bg-gradient-to-r from-blue-700 to-indigo-700 text-white shadow-lg ring-2 ring-blue-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+          }`}
+        >
+          <i className="fa-solid fa-satellite-dish text-amber-400"></i>
+          <span>Despacho en Vivo</span>
+          {activeCall && <span className="w-2 h-2 rounded-full bg-red-400 animate-ping"></span>}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('gamification')}
+          className={`flex-1 min-w-[170px] py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+            activeTab === 'gamification'
+              ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-lg ring-2 ring-amber-400/40 font-black'
+              : 'text-amber-300 hover:text-white hover:bg-slate-800/80'
+          }`}
+        >
+          <i className="fa-solid fa-trophy"></i>
+          <span>Puntos & Gamificación</span>
+          <span className="bg-amber-400/20 text-amber-300 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
+            {totalStorePoints.toLocaleString()} pts
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('team')}
+          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+            activeTab === 'team'
+              ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-lg ring-2 ring-slate-600/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+          }`}
+        >
+          <i className="fa-solid fa-users text-amber-400"></i>
+          <span>Equipo en Piso</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('history')}
+          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+            activeTab === 'history'
+              ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-lg ring-2 ring-slate-600/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+          }`}
+        >
+          <i className="fa-solid fa-clock-rotate-left text-amber-400"></i>
+          <span>Historial ({alertsHistory.length})</span>
+        </button>
+      </div>
+
+      {/* Banner de alerta entrante si el supervisor está en otra pestaña */}
+      {activeCall && activeTab !== 'live' && (
+        <div
+          onClick={() => setActiveTab('live')}
+          className="bg-gradient-to-r from-red-950 via-slate-900 to-red-950 border-2 border-red-500 text-white p-3.5 sm:p-4 rounded-2xl flex items-center justify-between shadow-2xl cursor-pointer hover:border-red-400 transition-all animate-pulse"
+        >
+          <div className="flex items-center space-x-3">
+            <span className="w-3.5 h-3.5 rounded-full bg-red-500 animate-ping"></span>
+            <div>
+              <span className="font-black text-xs sm:text-sm uppercase tracking-wider block text-white flex items-center gap-1.5">
+                <i className="fa-solid fa-bell text-amber-400"></i>
+                <span>Solicitud Activa en {activeCall.aisle}</span>
+              </span>
+              <p className="text-xs text-red-200 mt-0.5 font-bold">"{activeCall.reason}"</p>
+            </div>
+          </div>
+          <span className="bg-red-600 hover:bg-red-500 text-white font-black text-xs px-3.5 py-2 rounded-xl shadow shrink-0">
+            Atender Ahora ➜
+          </span>
+        </div>
+      )}
+
+      {/* PESTAÑA A: TABLERO DE PUNTOS Y GAMIFICACIÓN */}
+      {activeTab === 'gamification' && (
+        <AdminGamificationLeaderboard
+          employees={employees}
+          onAwardBonus={handleAwardBonus}
+        />
+      )}
+
+      {/* PESTAÑA B: DESPACHO EN VIVO */}
+      {activeTab === 'live' && (
+        <>
+          {/* 3. ALERTA ACTIVA EN TIEMPO REAL (ZONA CRÍTICA DE DESPACHO) */}
+          <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-black uppercase tracking-wider text-slate-300 flex items-center space-x-2">
             <i className="fa-solid fa-satellite-dish text-amber-400"></i>
@@ -568,169 +681,230 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </div>
         </div>
       )}
+      </>
+    )}
 
       {/* 5. TABLERO DE EQUIPO Y GESTIÓN EN PISO */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-4 sm:p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-              <i className="fa-solid fa-users text-amber-400"></i>
-              <span>Estado del Equipo en Piso de Venta</span>
-            </h3>
-            <p className="text-xs text-slate-400">
-              Cambia la disponibilidad de cualquier colaborador con 1 clic para optimizar el despacho
-            </p>
+      {(activeTab === 'team' || activeTab === 'live') && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-4 sm:p-6 space-y-4 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                <i className="fa-solid fa-users text-amber-400"></i>
+                <span>Estado del Equipo en Piso & Puntos</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Cambia la disponibilidad con 1 clic y monitorea los puntos de cada colaborador
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab('gamification')}
+              className="self-start sm:self-auto py-1 px-3 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-400/30 flex items-center space-x-1 transition-colors cursor-pointer"
+            >
+              <i className="fa-solid fa-trophy"></i>
+              <span>Ver Ranking Completo ➜</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {employees.map((emp) => {
+              const progress = getLevelProgress(emp.points || 0);
+
+              return (
+                <div
+                  key={emp.id}
+                  className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-sm hover:border-slate-700 transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-800 text-amber-300 font-black text-sm flex items-center justify-center border border-slate-700 shrink-0">
+                        {emp.initials}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-extrabold text-xs text-white leading-tight truncate">{emp.name}</h4>
+                        <span className="text-[10px] text-slate-400 block truncate">{emp.department}</span>
+                        <span className="text-[9px] text-slate-500 font-mono">
+                          ★ {emp.rating} · {emp.totalHelpedToday} atendidos hoy
+                        </span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                        emp.status === 'disponible'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          : emp.status === 'en_piso'
+                          ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                          : emp.status === 'ocupado'
+                          ? 'bg-red-950 text-red-300 border border-red-800'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {emp.status}
+                    </span>
+                  </div>
+
+                  {/* Resumen de Gamificación del Asesor */}
+                  <div className="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-extrabold text-amber-300 font-mono">
+                        🏆 {(emp.points || 0).toLocaleString()} PTS
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-300">
+                        {emp.levelTitle}
+                      </span>
+                      <span className="text-[10px] text-orange-400 font-bold flex items-center gap-0.5">
+                        <i className="fa-solid fa-fire text-[9px]"></i>
+                        {emp.streak || 0}
+                      </span>
+                    </div>
+
+                    {/* Mini barra de progreso */}
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full"
+                        style={{ width: `${Math.max(5, progress.progressPercent)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Botones de cambio de estado rápido y bono */}
+                  <div className="space-y-1.5 pt-1 border-t border-slate-900">
+                    <div className="grid grid-cols-4 gap-1 text-[10px] font-bold">
+                      <button
+                        onClick={() => handleUpdateEmpStatus(emp.id, 'disponible')}
+                        className={`py-1 rounded-lg transition-colors ${
+                          emp.status === 'disponible'
+                            ? 'bg-emerald-600 text-white font-black'
+                            : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
+                        }`}
+                      >
+                        Libre
+                      </button>
+                      <button
+                        onClick={() => handleUpdateEmpStatus(emp.id, 'en_piso')}
+                        className={`py-1 rounded-lg transition-colors ${
+                          emp.status === 'en_piso'
+                            ? 'bg-amber-600 text-white font-black'
+                            : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
+                        }`}
+                      >
+                        En Piso
+                      </button>
+                      <button
+                        onClick={() => handleUpdateEmpStatus(emp.id, 'ocupado')}
+                        className={`py-1 rounded-lg transition-colors ${
+                          emp.status === 'ocupado'
+                            ? 'bg-red-600 text-white font-black'
+                            : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
+                        }`}
+                      >
+                        Ocupado
+                      </button>
+                      <button
+                        onClick={() => handleUpdateEmpStatus(emp.id, 'descanso')}
+                        className={`py-1 rounded-lg transition-colors ${
+                          emp.status === 'descanso'
+                            ? 'bg-slate-700 text-white font-black'
+                            : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
+                        }`}
+                      >
+                        Descanso
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] pt-1">
+                      <span className="text-slate-500 font-mono">Bono Rápido:</span>
+                      <div className="flex items-center space-x-1">
+                        <button
+                          onClick={() => handleAwardBonus(emp.id, 50, 'Reconocimiento en piso')}
+                          className="px-2 py-0.5 bg-slate-900 hover:bg-amber-400 hover:text-slate-950 text-amber-300 font-bold rounded-lg border border-slate-800 transition-colors"
+                        >
+                          +50 pts
+                        </button>
+                        <button
+                          onClick={() => handleAwardBonus(emp.id, 100, 'Reconocimiento destacado')}
+                          className="px-2 py-0.5 bg-slate-900 hover:bg-amber-400 hover:text-slate-950 text-amber-300 font-bold rounded-lg border border-slate-800 transition-colors"
+                        >
+                          +100 pts
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
+      )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {employees.map((emp) => (
-            <div
-              key={emp.id}
-              className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-sm hover:border-slate-700 transition-colors"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-800 text-amber-300 font-black text-sm flex items-center justify-center border border-slate-700">
-                    {emp.initials}
-                  </div>
+      {/* 6. HISTORIAL DE ATENCIONES DE LA SUCURSAL */}
+      {(activeTab === 'history' || activeTab === 'live') && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-4 sm:p-6 space-y-3 shadow-xl">
+          <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+            <i className="fa-solid fa-clock-rotate-left text-amber-400"></i>
+            <span>Registro de Solicitudes Atendidas Hoy</span>
+          </h3>
+
+          {alertsHistory.length === 0 ? (
+            <div className="bg-slate-950 p-6 rounded-2xl text-center text-xs text-slate-500">
+              Aún no hay llamadas registradas en esta jornada.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {alertsHistory.slice(0, 10).map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-slate-950 border border-slate-800/80 rounded-2xl p-3 sm:p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                >
                   <div>
-                    <h4 className="font-extrabold text-xs text-white leading-tight">{emp.name}</h4>
-                    <span className="text-[10px] text-slate-400 block">{emp.department}</span>
-                    <span className="text-[9px] text-slate-500 font-mono">
-                      ★ {emp.rating} · {emp.totalHelpedToday} atendidos hoy
+                    <div className="flex items-center space-x-2">
+                      <span className="font-extrabold text-white text-xs">{item.aisle}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">({item.timestamp})</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-0.5">{item.reason}</p>
+                  </div>
+
+                  <div className="flex items-center space-x-3 shrink-0">
+                    <span className="text-[11px] text-amber-300">
+                      Atendió: <strong>{item.assignedAssociateName || 'Supervisor'}</strong>
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
+                        item.status === 'resolved'
+                          ? item.outcome === 'no_resuelto'
+                            ? 'bg-red-950 text-red-400 border border-red-800'
+                            : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                          : item.status === 'cancelled'
+                          ? 'bg-slate-800 text-slate-400'
+                          : 'bg-amber-950 text-amber-400 border border-amber-800'
+                      }`}
+                    >
+                      {item.status === 'resolved' ? (
+                        item.outcome === 'no_resuelto' ? (
+                          <>
+                            <i className="fa-solid fa-circle-xmark"></i>
+                            <span>No Resuelto</span>
+                          </>
+                        ) : (
+                          <>
+                            <i className="fa-solid fa-circle-check"></i>
+                            <span>Resuelto Exitoso</span>
+                          </>
+                        )
+                      ) : item.status === 'cancelled' ? (
+                        '✕ Descartado'
+                      ) : (
+                        '● Activo'
+                      )}
                     </span>
                   </div>
                 </div>
-
-                <span
-                  className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                    emp.status === 'disponible'
-                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                      : emp.status === 'en_piso'
-                      ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                      : emp.status === 'ocupado'
-                      ? 'bg-red-950 text-red-300 border border-red-800'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {emp.status}
-                </span>
-              </div>
-
-              {/* Botones de cambio de estado rápido */}
-              <div className="grid grid-cols-4 gap-1 text-[10px] font-bold pt-1 border-t border-slate-900">
-                <button
-                  onClick={() => handleUpdateEmpStatus(emp.id, 'disponible')}
-                  className={`py-1 rounded-lg transition-colors ${
-                    emp.status === 'disponible'
-                      ? 'bg-emerald-600 text-white font-black'
-                      : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
-                  }`}
-                >
-                  Libre
-                </button>
-                <button
-                  onClick={() => handleUpdateEmpStatus(emp.id, 'en_piso')}
-                  className={`py-1 rounded-lg transition-colors ${
-                    emp.status === 'en_piso'
-                      ? 'bg-amber-600 text-white font-black'
-                      : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
-                  }`}
-                >
-                  En Piso
-                </button>
-                <button
-                  onClick={() => handleUpdateEmpStatus(emp.id, 'ocupado')}
-                  className={`py-1 rounded-lg transition-colors ${
-                    emp.status === 'ocupado'
-                      ? 'bg-red-600 text-white font-black'
-                      : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
-                  }`}
-                >
-                  Ocupado
-                </button>
-                <button
-                  onClick={() => handleUpdateEmpStatus(emp.id, 'descanso')}
-                  className={`py-1 rounded-lg transition-colors ${
-                    emp.status === 'descanso'
-                      ? 'bg-slate-700 text-white font-black'
-                      : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
-                  }`}
-                >
-                  Descanso
-                </button>
-              </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      </div>
-
-      {/* 6. HISTORIAL DE ATENCIONES DE LA SUCURSAL */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-4 sm:p-6 space-y-3 shadow-xl">
-        <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-          <i className="fa-solid fa-clock-rotate-left text-amber-400"></i>
-          <span>Registro de Solicitudes Atendidas Hoy</span>
-        </h3>
-
-        {alertsHistory.length === 0 ? (
-          <div className="bg-slate-950 p-6 rounded-2xl text-center text-xs text-slate-500">
-            Aún no hay llamadas registradas en esta jornada.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {alertsHistory.slice(0, 10).map((item) => (
-              <div
-                key={item.id}
-                className="bg-slate-950 border border-slate-800/80 rounded-2xl p-3 sm:p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-              >
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-extrabold text-white text-xs">{item.aisle}</span>
-                    <span className="text-[10px] text-slate-500 font-mono">({item.timestamp})</span>
-                  </div>
-                  <p className="text-[11px] text-slate-300 mt-0.5">{item.reason}</p>
-                </div>
-
-                <div className="flex items-center space-x-3 shrink-0">
-                  <span className="text-[11px] text-amber-300">
-                    Atendió: <strong>{item.assignedAssociateName || 'Supervisor'}</strong>
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
-                      item.status === 'resolved'
-                        ? item.outcome === 'no_resuelto'
-                          ? 'bg-red-950 text-red-400 border border-red-800'
-                          : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                        : item.status === 'cancelled'
-                        ? 'bg-slate-800 text-slate-400'
-                        : 'bg-amber-950 text-amber-400 border border-amber-800'
-                    }`}
-                  >
-                    {item.status === 'resolved' ? (
-                      item.outcome === 'no_resuelto' ? (
-                        <>
-                          <i className="fa-solid fa-circle-xmark"></i>
-                          <span>No Resuelto</span>
-                        </>
-                      ) : (
-                        <>
-                          <i className="fa-solid fa-circle-check"></i>
-                          <span>Resuelto Exitoso</span>
-                        </>
-                      )
-                    ) : item.status === 'cancelled' ? (
-                      '✕ Descartado'
-                    ) : (
-                      '● Activo'
-                    )}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* MODAL DE INSPECCIÓN Y RESOLUCIÓN (SÍ SE PUDO RESOLVER / NO SE PUDO RESOLVER) */}
       <ResolutionOutcomeModal

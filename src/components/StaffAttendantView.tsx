@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Employee, AssistanceAlert, ResolutionOutcome } from '../types';
-import { staffSync } from '../services/kioskSync';
+import { staffSync, INITIAL_EMPLOYEES } from '../services/kioskSync';
 import { soundEffects } from '../services/soundEffects';
 import { voice } from '../services/voice';
 import { ResolutionOutcomeModal } from './ResolutionOutcomeModal';
+import { AdvisorGamificationRoad } from './AdvisorGamificationRoad';
+import { PointsCelebrationModal } from './PointsCelebrationModal';
+import { calculatePointsForAssistance } from '../services/gamification';
 
 interface StaffAttendantViewProps {
   onSwitchToAdminRole?: () => void;
@@ -15,7 +18,10 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
   onOpenShareModal,
 }) => {
   const [activeCall, setActiveCall] = useState<AssistanceAlert | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    const list = staffSync.getState()?.employees;
+    return list && list.length > 0 ? list : INITIAL_EMPLOYEES;
+  });
   const [alertsHistory, setAlertsHistory] = useState<AssistanceAlert[]>([]);
   const [selectedMyId, setSelectedMyId] = useState<string>('emp-01'); // Mariana Gómez por defecto
   const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(false);
@@ -24,6 +30,19 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
   const [isOutcomeModalOpen, setIsOutcomeModalOpen] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>('Atendiendo a otro cliente en este momento');
   const [justRejectedNotice, setJustRejectedNotice] = useState<boolean>(false);
+  const [advisorTab, setAdvisorTab] = useState<'dispatch' | 'road'>('dispatch');
+  const [isRoadModalOpen, setIsRoadModalOpen] = useState<boolean>(false);
+  const [celebrationData, setCelebrationData] = useState<{
+    isOpen: boolean;
+    points: number;
+    outcome: ResolutionOutcome;
+    breakdown: string[];
+  }>({
+    isOpen: false,
+    points: 100,
+    outcome: 'resuelto_exitoso',
+    breakdown: [],
+  });
 
   const prevCallIdRef = useRef<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -45,7 +64,7 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     };
   }, []);
 
-  const myEmployee = employees.find((e) => e.id === selectedMyId) || employees[0];
+  const myEmployee = employees.find((e) => e.id === selectedMyId) || employees[0] || INITIAL_EMPLOYEES[0];
 
   // Evaluar si la llamada activa aplica a este asesor:
   // Es relevante si está sin asignar, asignada a él, o si no la ha rechazado ya
@@ -120,16 +139,32 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
   // 3. ACCIÓN: CONFIRMAR RESULTADO DE LA INSPECCIÓN (SÍ SE PUDO RESOLVER / NO SE PUDO RESOLVER)
   const handleConfirmOutcome = async (outcome: ResolutionOutcome, notes: string) => {
     if (!activeCall) return;
-    soundEffects.playSuccessChime();
     const alertId = activeCall.id;
-    await staffSync.resolveCall(alertId, outcome, notes);
-    setIsOutcomeModalOpen(false);
+
+    // Calcular puntos ganados y bonos
+    const pointsCalc = calculatePointsForAssistance({
+      outcome,
+      elapsedSeconds,
+      currentStreak: myEmployee?.streak || 0,
+    });
 
     if (outcome === 'resuelto_exitoso') {
-      voice.speak('¡Atención resuelta exitosamente! Excelente trabajo.');
+      soundEffects.playPointsFanfare();
+      voice.speak(`¡Excelente trabajo ${myEmployee?.name.split(' ')[0]}! Has ganado ${pointsCalc.totalPoints} puntos.`);
     } else {
+      soundEffects.playSuccessChime();
       voice.speak('Atención registrada como no resuelta. Supervisor notificado.');
     }
+
+    setCelebrationData({
+      isOpen: true,
+      points: pointsCalc.totalPoints,
+      outcome,
+      breakdown: pointsCalc.reasons,
+    });
+
+    await staffSync.resolveCall(alertId, outcome, notes);
+    setIsOutcomeModalOpen(false);
   };
 
   // Cambiar mi estado personal (Disponible, Ocupado, Descanso)
@@ -271,8 +306,64 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
         </div>
       </div>
 
-      {/* 4. ÁREA CENTRAL: SOLICITUD ENTRANTE O ESTADO DE ESPERA */}
+      {/* 3.1 PESTAÑAS DE VISTA: ATENCIÓN EN PISO VS CAMINO DE AVANCE ANIMADO */}
+      <div className="bg-slate-950 px-4 pt-2.5 pb-2 border-b border-slate-800 flex items-center justify-between gap-2">
+        <div className="flex items-center space-x-1.5 w-full">
+          <button
+            onClick={() => setAdvisorTab('dispatch')}
+            className={`flex-1 py-2 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+              advisorTab === 'dispatch'
+                ? 'bg-gradient-to-r from-blue-700 to-indigo-700 text-white shadow-lg ring-2 ring-blue-500/30'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <i className="fa-solid fa-headset"></i>
+            <span>Atención en Piso</span>
+            {isRelevantCall && (
+              <span className="w-2 h-2 rounded-full bg-red-400 animate-ping ml-1"></span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setAdvisorTab('road')}
+            className={`flex-1 py-2 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+              advisorTab === 'road'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-lg ring-2 ring-amber-400/30 font-black'
+                : 'bg-slate-900 text-amber-300 hover:text-white border border-slate-800'
+            }`}
+          >
+            <i className="fa-solid fa-trophy"></i>
+            <span>Camino de Puntos</span>
+            <span className="bg-amber-400/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">
+              {myEmployee?.points || 0} pts
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* 4. ÁREA CENTRAL: SOLICITUD ENTRANTE O CAMINO DE AVANCE */}
       <div className="flex-1 p-4 space-y-4 overflow-y-auto screen-scroll">
+        {advisorTab === 'road' ? (
+          /* VISTA COMPLETA: CAMINO DE AVANCE ANIMADO CON HITOS */
+          <div className="space-y-4 animate-in fade-in duration-200">
+            <AdvisorGamificationRoad employee={myEmployee} compact={false} />
+            <button
+              onClick={() => setAdvisorTab('dispatch')}
+              className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold rounded-2xl text-xs border border-slate-700 flex items-center justify-center space-x-2 transition-colors cursor-pointer"
+            >
+              <i className="fa-solid fa-arrow-left"></i>
+              <span>Regresar a Atención en Piso</span>
+            </button>
+          </div>
+        ) : (
+          /* VISTA OPERATIVA DE DESPACHO EN PISO */
+          <>
+            {/* Tarjeta compacta del progreso de puntos del asesor */}
+            <AdvisorGamificationRoad
+              employee={myEmployee}
+              compact={true}
+              onOpenRoadDetails={() => setAdvisorTab('road')}
+            />
         {/* Aviso de llamada rechazada recientemente */}
         {justRejectedNotice && (
           <div className="bg-amber-950/90 border border-amber-600 text-amber-200 p-3 rounded-2xl text-xs space-y-1 animate-in fade-in">
@@ -379,11 +470,14 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleConfirmOutcome('resuelto_exitoso', '🛒 Venta concretada / Duda resuelta con éxito')}
-                        className="p-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl flex flex-col items-center justify-center space-y-1 active:scale-95 transition-all cursor-pointer"
+                        className="p-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl flex flex-col items-center justify-center space-y-1 active:scale-95 transition-all cursor-pointer relative overflow-hidden ring-2 ring-emerald-400/40"
                       >
+                        <span className="absolute top-1.5 right-1.5 bg-amber-300 text-slate-950 text-[9px] font-black px-1.5 py-0.2 rounded-full shadow">
+                          +100 a +150 PTS
+                        </span>
                         <i className="fa-solid fa-circle-check text-xl"></i>
                         <span>Sí se resolvió</span>
-                        <span className="text-[10px] text-emerald-950 font-bold">Éxito en piso</span>
+                        <span className="text-[10px] text-emerald-950 font-black">Ganar Puntos 🏆</span>
                       </button>
 
                       {/* BOTÓN 2: NO SE PUDO RESOLVER */}
@@ -464,6 +558,8 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
               ))}
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/* 5. MODAL DE MOTIVO DE RECHAZO */}
@@ -526,6 +622,17 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
         alert={activeCall}
         onConfirmOutcome={handleConfirmOutcome}
         roleTitle="Asesor en Piso"
+      />
+
+      {/* MODAL DE CELEBRACIÓN DE PUNTOS GANADOS (FANFARRIA Y GAMIFICACIÓN) */}
+      <PointsCelebrationModal
+        isOpen={celebrationData.isOpen}
+        onClose={() => setCelebrationData((prev) => ({ ...prev, isOpen: false }))}
+        pointsEarned={celebrationData.points}
+        advisorName={myEmployee?.name || 'Asesor'}
+        outcome={celebrationData.outcome}
+        breakdown={celebrationData.breakdown}
+        currentTotalPoints={myEmployee?.points || 0}
       />
     </div>
   );

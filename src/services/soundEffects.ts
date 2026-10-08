@@ -81,6 +81,47 @@ class SoundEffectsService {
     }
   }
 
+  // Gamification celebratory fanfare (when earning points for successful assist)
+  public playPointsFanfare() {
+    try {
+      const ctx = this.getAudioContext();
+      const now = ctx.currentTime;
+
+      // Arpeggio chords in C major / triumphant fanfare
+      const notes = [
+        { f: 523.25, d: 0.1, t: 0 },       // C5
+        { f: 659.25, d: 0.1, t: 0.08 },    // E5
+        { f: 783.99, d: 0.12, t: 0.16 },   // G5
+        { f: 1046.5, d: 0.25, t: 0.24 },   // C6
+        { f: 1318.5, d: 0.35, t: 0.38 },   // E6 (sparkle high)
+      ];
+
+      notes.forEach(({ f, d, t }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, now + t);
+
+        gain.gain.setValueAtTime(0, now + t);
+        gain.gain.linearRampToValueAtTime(0.28, now + t + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + t + d);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + t);
+        osc.stop(now + t + d + 0.05);
+      });
+
+      if ('vibrate' in navigator) {
+        navigator.vibrate([100, 50, 150]);
+      }
+    } catch (e) {
+      console.warn('Sound effect error:', e);
+    }
+  }
+
   // Request browser Web Push notification permission
   public async requestNotificationPermission(): Promise<boolean> {
     if (!('Notification' in window)) {

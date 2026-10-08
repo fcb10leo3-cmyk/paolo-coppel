@@ -14,6 +14,11 @@ interface EmployeeRecord {
   rating: number;
   totalHelpedToday: number;
   badge?: string;
+  points: number;
+  successfulAssistsToday: number;
+  level: number;
+  levelTitle: string;
+  streak: number;
 }
 
 interface AssistanceAlertRecord {
@@ -63,6 +68,11 @@ let employeesList: EmployeeRecord[] = [
     rating: 4.9,
     totalHelpedToday: 14,
     badge: 'Top Asesora',
+    points: 1450,
+    successfulAssistsToday: 14,
+    level: 3,
+    levelTitle: 'Especialista Plata',
+    streak: 5,
   },
   {
     id: 'emp-02',
@@ -77,6 +87,11 @@ let employeesList: EmployeeRecord[] = [
     rating: 4.8,
     totalHelpedToday: 19,
     badge: 'Tech Guru',
+    points: 1920,
+    successfulAssistsToday: 18,
+    level: 4,
+    levelTitle: 'Master Oro',
+    streak: 6,
   },
   {
     id: 'emp-03',
@@ -91,6 +106,11 @@ let employeesList: EmployeeRecord[] = [
     rating: 5.0,
     totalHelpedToday: 22,
     badge: 'Servicio Estrella',
+    points: 2280,
+    successfulAssistsToday: 22,
+    level: 4,
+    levelTitle: 'Master Oro',
+    streak: 9,
   },
   {
     id: 'emp-04',
@@ -104,6 +124,11 @@ let employeesList: EmployeeRecord[] = [
     phone: '55 9876 5432',
     rating: 4.7,
     totalHelpedToday: 9,
+    points: 920,
+    successfulAssistsToday: 8,
+    level: 2,
+    levelTitle: 'Asesor Bronce',
+    streak: 2,
   },
   {
     id: 'emp-05',
@@ -117,6 +142,11 @@ let employeesList: EmployeeRecord[] = [
     phone: '55 3456 7890',
     rating: 4.9,
     totalHelpedToday: 11,
+    points: 1180,
+    successfulAssistsToday: 11,
+    level: 3,
+    levelTitle: 'Especialista Plata',
+    streak: 4,
   },
 ];
 
@@ -355,6 +385,14 @@ export const handler = async (event: any) => {
           if (emp) {
             emp.status = 'disponible';
             emp.totalHelpedToday = (emp.totalHelpedToday || 0) + 1;
+            const pts = outcome === 'resuelto_exitoso' ? 100 : 10;
+            emp.points = (emp.points || 0) + pts;
+            if (outcome === 'resuelto_exitoso') {
+              emp.successfulAssistsToday = (emp.successfulAssistsToday || 0) + 1;
+              emp.streak = (emp.streak || 0) + 1;
+            } else {
+              emp.streak = 0;
+            }
           }
         }
 
@@ -394,6 +432,33 @@ export const handler = async (event: any) => {
         statusCode: 200,
         headers: corsHeaders,
         body: JSON.stringify({ success: true, message: 'Alerta cancelada' }),
+      };
+    }
+
+    // 9. POST /employees/bonus (Otorgar bono de supervisor)
+    if (method === 'POST' && cleanPath === '/employees/bonus') {
+      const { employeeId, bonusPoints, reason } = body;
+      const emp = employeesList.find((e) => e.id === employeeId);
+      if (!emp) {
+        return {
+          statusCode: 404,
+          headers: corsHeaders,
+          body: JSON.stringify({ success: false, message: 'Empleado no encontrado' }),
+        };
+      }
+
+      const pts = parseInt(bonusPoints, 10) || 50;
+      emp.points = (emp.points || 0) + pts;
+
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          success: true,
+          message: `Bono de +${pts} otorgado a ${emp.name}`,
+          employee: emp,
+          reason,
+        }),
       };
     }
 
