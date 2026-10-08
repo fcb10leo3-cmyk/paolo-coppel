@@ -40,6 +40,12 @@ interface AssistanceAlertRecord {
   estimatedArrivalSeconds: number;
   resolvedAt?: string;
   clientNotes?: string;
+  rejectedBy?: string[];
+  lastRejectionReason?: string;
+  lastRejectedByName?: string;
+  dispatchedByAdmin?: boolean;
+  outcome?: string;
+  resolutionNotes?: string;
 }
 
 let employeesList: EmployeeRecord[] = [
@@ -215,9 +221,31 @@ const catalogItems = [
   },
 ];
 
+interface IntegrationLog {
+  id: string;
+  timestamp: string;
+  origin: string;
+  aisle: string;
+  reason: string;
+  status: 'received' | 'processed';
+}
+
+let integrationLogs: IntegrationLog[] = [];
+
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  // Soporte CORS universal para permitir conexión desde el Kiosco externo u otros dominios
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
 
   // Kiosk Asistencia & Employees Endpoints
   app.get('/api/kiosk/status', (_req: Request, res: Response) => {
@@ -298,9 +326,9 @@ async function startServer() {
     });
   });
 
-  // Trigger assistance button ("Push to Speak" / "Pedir Asistencia" from Kiosk)
+  // Trigger assistance button ("Push to Speak" / "Pedir Asistencia" from client or simulator)
   app.post('/api/assistance/call', (req: Request, res: Response) => {
-    const { aisle, department, reason, preferredEmployeeId } = req.body;
+    const { id, aisle, department, reason, preferredEmployeeId } = req.body;
 
     // Pick preferred employee if available, or first available, or fallback
     let assigned = employeesList.find((e) => e.id === preferredEmployeeId && e.status === 'disponible');
@@ -312,14 +340,15 @@ async function startServer() {
     }
 
     const now = new Date();
+    const alertId = id || `CALL-${Date.now()}`;
     const newAlert: AssistanceAlertRecord = {
-      id: `CALL-${Date.now()}`,
+      id: alertId,
       timestamp: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       createdAt: Date.now(),
       status: 'calling', // initially calling, associates get loud notification on phone!
       aisle: aisle || 'Pasillo Central de Asistencia 04',
       storeDepartment: department || 'Muebles & Electrónica',
-      reason: reason || 'Atención personalizada solicitada en Tótem Kiosco',
+      reason: reason || 'Atención personalizada solicitada en pasillo',
       preferredEmployeeId: preferredEmployeeId || undefined,
       assignedAssociateName: assigned.name,
       assignedAssociateRole: assigned.role,
@@ -330,6 +359,17 @@ async function startServer() {
     activeAssistanceCall = newAlert;
     alertsHistory.unshift(newAlert);
     if (alertsHistory.length > 50) alertsHistory.pop();
+
+    const originHeader = (req.headers['origin'] || req.headers['referer'] || req.ip || 'Kiosco Externo').toString();
+    integrationLogs.unshift({
+      id: `LOG-${Date.now()}`,
+      timestamp: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      origin: originHeader,
+      aisle: newAlert.aisle,
+      reason: newAlert.reason,
+      status: 'processed',
+    });
+    if (integrationLogs.length > 30) integrationLogs.pop();
 
     broadcastSSE({
       type: 'new_call',
@@ -342,6 +382,79 @@ async function startServer() {
       message: 'Llamada enviada al radiolocalizador y celular del personal en tienda.',
       call: activeAssistanceCall,
       alert: newAlert,
+    });
+  });
+
+  // Alias dedicado para Kiosco Externo: POST /api/external/call
+  app.post('/api/external/call', (req: Request, res: Response) => {
+    // Redirigir al manejador estándar de llamada
+    const { id, aisle, department, reason, preferredEmployeeId } = req.body;
+    let assigned = employeesList.find((e) => e.id === preferredEmployeeId && e.status === 'disponible') ||
+      employeesList.find((e) => e.status === 'disponible') || employeesList[0];
+
+    const now = new Date();
+    const alertId = id || `EXT-${Date.now()}`;
+    const newAlert: AssistanceAlertRecord = {
+      id: alertId,
+      timestamp: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      createdAt: Date.now(),
+      status: 'calling',
+      aisle: aisle || 'Kiosco Tótem Interactivo Piso 1',
+      storeDepartment: department || 'Piso General',
+      reason: reason || 'Cliente solicita asistencia desde Kiosco Tótem',
+      preferredEmployeeId: preferredEmployeeId || undefined,
+      assignedAssociateName: assigned.name,
+      assignedAssociateRole: assigned.role,
+      assignedAssociateId: assigned.id,
+      estimatedArrivalSeconds: 30,
+    };
+
+    activeAssistanceCall = newAlert;
+    alertsHistory.unshift(newAlert);
+    if (alertsHistory.length > 50) alertsHistory.pop();
+
+    const originHeader = (req.headers['origin'] || req.headers['referer'] || req.ip || 'Kiosco Tótem Externo').toString();
+    integrationLogs.unshift({
+      id: `LOG-${Date.now()}`,
+      timestamp: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      origin: originHeader,
+      aisle: newAlert.aisle,
+      reason: newAlert.reason,
+      status: 'processed',
+    });
+
+    broadcastSSE({
+      type: 'new_call',
+      alert: newAlert,
+      activeCall: activeAssistanceCall,
+    });
+
+    res.json({
+      success: true,
+      message: 'Solicitud del Kiosco recibida y despachada al personal en piso exitosamente.',
+      alertId: newAlert.id,
+      assignedTo: assigned.name,
+      call: activeAssistanceCall,
+    });
+  });
+
+  // Health check y estado para integración con Kiosco Externo
+  app.get('/api/external/ping', (_req: Request, res: Response) => {
+    res.json({
+      success: true,
+      service: 'Coppel Staff & Despacho API',
+      status: 'ONLINE',
+      serverTime: new Date().toISOString(),
+      activeCall: activeAssistanceCall ? { id: activeAssistanceCall.id, aisle: activeAssistanceCall.aisle, status: activeAssistanceCall.status } : null,
+      availableStaffCount: employeesList.filter((e) => e.status === 'disponible').length,
+    });
+  });
+
+  // Registro de peticiones recibidas desde Kioscos externos
+  app.get('/api/external/logs', (_req: Request, res: Response) => {
+    res.json({
+      success: true,
+      logs: integrationLogs,
     });
   });
 
@@ -387,11 +500,11 @@ async function startServer() {
     });
   });
 
-  // Employee marks request as completed / resolved ("Atendido y Resuelto")
+  // Employee or Admin marks request as completed / resolved ("Atendido y Resuelto" con resultado)
   app.post('/api/assistance/resolve', (req: Request, res: Response) => {
-    const { alertId } = req.body;
+    const { alertId, outcome, resolutionNotes } = req.body;
 
-    let targetAlert = activeAssistanceCall && activeAssistanceCall.id === alertId ? activeAssistanceCall : null;
+    let targetAlert = activeAssistanceCall;
     if (!targetAlert && alertId) {
       targetAlert = alertsHistory.find((a) => a.id === alertId) || null;
     }
@@ -402,27 +515,121 @@ async function startServer() {
     if (targetAlert) {
       targetAlert.status = 'resolved';
       targetAlert.resolvedAt = timeStr;
+      targetAlert.outcome = outcome || 'resuelto_exitoso';
+      targetAlert.resolutionNotes = resolutionNotes || (outcome === 'no_resuelto' ? 'No se pudo resolver en piso' : 'Atendido exitosamente');
+
       if (targetAlert.assignedAssociateId) {
         const emp = employeesList.find((e) => e.id === targetAlert.assignedAssociateId);
-        if (emp) emp.totalHelpedToday += 1;
+        if (emp) {
+          emp.totalHelpedToday += 1;
+          emp.status = 'disponible';
+        }
+      }
+
+      // Asegurar que esté en el historial
+      if (!alertsHistory.some((a) => a.id === targetAlert.id)) {
+        alertsHistory.unshift(targetAlert);
       }
     }
 
-    if (activeAssistanceCall && (!alertId || activeAssistanceCall.id === alertId)) {
-      activeAssistanceCall = null;
-    }
+    // Terminar llamada activa permanentemente
+    activeAssistanceCall = null;
 
     broadcastSSE({
       type: 'call_resolved',
-      alertId,
+      alertId: targetAlert?.id || alertId,
       resolvedAt: timeStr,
+      outcome: outcome || 'resuelto_exitoso',
+      resolutionNotes,
       employees: employeesList,
       activeCall: null,
     });
 
     res.json({
       success: true,
-      message: 'Asistencia marcada como completada y cliente atendido.',
+      message: 'Asistencia finalizada y registrada correctamente.',
+      activeCall: null,
+    });
+  });
+
+  // Employee rejects call because they are attending another case
+  app.post('/api/assistance/reject', (req: Request, res: Response) => {
+    const { alertId, employeeId, employeeName, reason } = req.body;
+
+    const emp = employeesList.find((e) => e.id === employeeId);
+    const finalName = emp ? emp.name : employeeName || 'Asesor de Tienda';
+    if (emp) {
+      emp.status = 'ocupado';
+    }
+
+    let targetAlert = activeAssistanceCall && (!alertId || activeAssistanceCall.id === alertId) ? activeAssistanceCall : null;
+    if (!targetAlert && alertId) {
+      targetAlert = alertsHistory.find((a) => a.id === alertId) || null;
+    }
+
+    if (targetAlert) {
+      const prevRejected = (targetAlert as any).rejectedBy || [];
+      (targetAlert as any).rejectedBy = [...prevRejected, employeeId];
+      (targetAlert as any).lastRejectionReason = reason || 'Atendiendo a otro cliente';
+      (targetAlert as any).lastRejectedByName = finalName;
+      targetAlert.status = 'calling'; // Devuelve la alerta al supervisor
+      targetAlert.assignedAssociateId = undefined;
+      targetAlert.assignedAssociateName = undefined;
+    }
+
+    broadcastSSE({
+      type: 'call_rejected',
+      alertId,
+      employeeId,
+      employeeName: finalName,
+      reason,
+      employees: employeesList,
+      activeCall: activeAssistanceCall,
+    });
+
+    res.json({
+      success: true,
+      message: `${finalName} rechazó la llamada. Supervisor notificado.`,
+      activeCall: activeAssistanceCall,
+    });
+  });
+
+  // Admin assigns call to specific employee
+  app.post('/api/assistance/assign', (req: Request, res: Response) => {
+    const { alertId, employeeId } = req.body;
+
+    const emp = employeesList.find((e) => e.id === employeeId);
+    if (!emp) {
+      return res.status(404).json({ success: false, message: 'Empleado no encontrado' });
+    }
+
+    let targetAlert = activeAssistanceCall && (!alertId || activeAssistanceCall.id === alertId) ? activeAssistanceCall : null;
+    if (!targetAlert && alertId) {
+      targetAlert = alertsHistory.find((a) => a.id === alertId) || null;
+    }
+
+    if (targetAlert) {
+      targetAlert.assignedAssociateId = emp.id;
+      targetAlert.assignedAssociateName = emp.name;
+      targetAlert.assignedAssociateRole = emp.role;
+      targetAlert.status = 'calling';
+      (targetAlert as any).dispatchedByAdmin = true;
+      (targetAlert as any).lastRejectionReason = undefined;
+      (targetAlert as any).lastRejectedByName = undefined;
+    }
+
+    broadcastSSE({
+      type: 'call_assigned',
+      alertId,
+      employeeId: emp.id,
+      employeeName: emp.name,
+      activeCall: activeAssistanceCall,
+    });
+
+    res.json({
+      success: true,
+      message: `Alerta asignada a ${emp.name}`,
+      activeCall: activeAssistanceCall,
     });
   });
 
@@ -458,65 +665,6 @@ async function startServer() {
         item.aisle.toLowerCase().includes(q)
     );
     res.json({ success: true, items: filtered });
-  });
-
-  // Fast payment simulation and receipt printing
-  app.post('/api/kiosk/pay', (req: Request, res: Response) => {
-    const { clientNumber, amount, concept, paymentType } = req.body;
-
-    const ticketNumber = `CP-TK-${Math.floor(100000 + Math.random() * 900000)}`;
-    const now = new Date();
-
-    const receipt = {
-      ticketNumber,
-      clientNumber: clientNumber || '98421092',
-      clientName: 'Cliente Coppel',
-      concept: concept || 'Abono a Cuenta Coppel',
-      amount: Number(amount) || 450,
-      paymentMethod: paymentType || 'Tarjeta Bancaria / NFC',
-      date: now.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }),
-      time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-      kioskId: kioskHardwareConfig.totemId,
-      branch: kioskHardwareConfig.storeName,
-      authCode: `AUT-${Math.floor(100000 + Math.random() * 900000)}`,
-      barcode: `*${ticketNumber}*`,
-    };
-
-    res.json({
-      success: true,
-      message: 'Pago aplicado exitosamente sin filas en caja.',
-      receipt,
-    });
-  });
-
-  // Hardware Blueprint specs endpoint for developers/engineers
-  app.get('/api/hardware/blueprint', (_req: Request, res: Response) => {
-    res.json({
-      success: true,
-      title: 'Especificación de Hardware y Lista de Materiales (BOM) para Kiosco Coppel Asistencia',
-      options: [
-        {
-          tier: 'Opción A: Comercial / Tablet Grande (Más Rápida y Económica)',
-          screen: 'Tablet Android comercial de 14.6" o 15.6" con modo Kiosk (Samsung Galaxy Tab S9 Ultra o tablet PoE industrial Touch All-In-One)',
-          screenPriceUSD: '$350 - $480 USD',
-          buttonInterface: 'Botón arcade iluminado LED 60mm + Encoder USB Zero-Delay HID ($12 USD)',
-          printer: 'Mini impresora térmica empotrable 58mm o 80mm USB con cortador ($45 - $65 USD)',
-          intercomAudio: 'Micrófono USB tipo condensador omnidireccional + bocinas estéreo 5W ($20 USD)',
-          totemEnclosure: 'Gabinete MDF lacado o lámina de acero cal. 18 con pintura electrostática azul Coppel ($180 - $250 USD)',
-          estimatedTotalUSD: '$600 - $820 USD por unidad',
-        },
-        {
-          tier: 'Opción B: Industrial All-In-One (Para Alta Afluencia / Máxima Durabilidad)',
-          screen: 'Monitor industrial táctil capacitivo de 21.5" Full HD (grado comercial 24/7) + Mini PC Intel N100 Fanless',
-          screenPriceUSD: '$420 - $550 USD',
-          buttonInterface: 'Botón metálico antivandálico IP65 de 30mm/60mm con anillo LED 12V + Placa Raspberry Pi Pico HID ($18 USD)',
-          printer: 'Impresora térmica de kiosco Custom / Epson TM-T88VI con sensor de atasco ($140 USD)',
-          intercomAudio: 'Intercomunicador SIP bidireccional integrado con cancelación de ruido activa ($65 USD)',
-          totemEnclosure: 'Tótem de acero al carbón de 1.6m con puerta trasera con llave de seguridad ($320 USD)',
-          estimatedTotalUSD: '$950 - $1,150 USD por unidad',
-        },
-      ],
-    });
   });
 
   // Mount Vite in dev or serve static in prod

@@ -1,183 +1,116 @@
-import React, { useState, useEffect } from 'react';
-import { AssistanceAlert } from './types';
-import { PhysicalTotemFrame } from './components/PhysicalTotemFrame';
-import { HardwareBlueprintModal } from './components/HardwareBlueprintModal';
-import { AdminEmployeePanel } from './components/AdminEmployeePanel';
-import { TwoDeviceSyncModal } from './components/TwoDeviceSyncModal';
-import { voice } from './services/voice';
-import { kioskSync } from './services/kioskSync';
+import React, { useState } from 'react';
+import { UserRole } from './types';
+import { AdminDashboardView } from './components/AdminDashboardView';
+import { StaffAttendantView } from './components/StaffAttendantView';
+import { ShareDevicesModal } from './components/ShareDevicesModal';
 
 export default function App() {
-  // The user specifically wants the App Móvil de Empleados as the default primary project
-  const [activeView, setActiveView] = useState<'admin' | 'kiosk'>(() => {
+  // Detectar rol inicial según parámetro URL (?role=admin o ?role=staff) o por defecto Administrador
+  const [activeRole, setActiveRole] = useState<UserRole>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('mode') === 'kiosk' || window.location.pathname === '/kiosk') {
-        return 'kiosk';
-      }
+      const roleParam = params.get('role');
+      if (roleParam === 'staff' || roleParam === 'personal') return 'staff';
+      if (roleParam === 'admin' || roleParam === 'supervisor') return 'admin';
     }
     return 'admin';
   });
 
-  const [activeCall, setActiveCall] = useState<AssistanceAlert | null>(null);
-  const [isAssistanceActive, setIsAssistanceActive] = useState<boolean>(false);
-  const [activeAssociateName, setActiveAssociateName] = useState<string>('Mariana Gómez');
-  const [isHardwareModalOpen, setIsHardwareModalOpen] = useState<boolean>(false);
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+  const [shareModalTab, setShareModalTab] = useState<'staff' | 'admin' | 'kiosk_api' | 'deploy'>('staff');
 
-  // Real-time synchronization (kioskSync with SSE + BroadcastChannel + Fast Poll fallback)
-  useEffect(() => {
-    const unsubscribe = kioskSync.subscribe((state) => {
-      if (state.activeCall) {
-        setActiveCall(state.activeCall);
-        setIsAssistanceActive(true);
-        if (state.activeCall.assignedAssociateName) {
-          setActiveAssociateName(state.activeCall.assignedAssociateName);
-        }
-      } else {
-        setActiveCall(null);
-        setIsAssistanceActive(false);
-      }
-    });
-
-    kioskSync.fetchStatus();
-    const interval = setInterval(() => {
-      kioskSync.fetchStatus();
-    }, 2000);
-
-    // SSE connection for immediate push across devices when backend is available
-    let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/assistance/stream');
-      eventSource.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload.type === 'init' || payload.type === 'new_call') {
-            const call = payload.activeCall || payload.alert;
-            if (call) {
-              setActiveCall(call);
-              setIsAssistanceActive(true);
-              if (call.assignedAssociateName) {
-                setActiveAssociateName(call.assignedAssociateName);
-              }
-            } else {
-              setActiveCall(null);
-              setIsAssistanceActive(false);
-            }
-          } else if (payload.type === 'call_responded') {
-            if (payload.activeCall) {
-              setActiveCall(payload.activeCall);
-              setIsAssistanceActive(true);
-              if (payload.activeCall.assignedAssociateName) {
-                setActiveAssociateName(payload.activeCall.assignedAssociateName);
-              }
-            }
-          } else if (payload.type === 'call_resolved') {
-            setActiveCall(null);
-            setIsAssistanceActive(false);
-            voice.speak('¡Asistencia completada! Esperamos que tu experiencia en Coppel haya sido excelente.');
-          } else if (payload.type === 'call_cancelled') {
-            setActiveCall(null);
-            setIsAssistanceActive(false);
-          }
-        } catch {
-          // ignore parse errors
-        }
-      };
-    } catch {
-      // SSE connection error
-    }
-
-    return () => {
-      unsubscribe();
-      clearInterval(interval);
-      if (eventSource) eventSource.close();
-    };
-  }, []);
-
-  const handleTriggerAssistance = async (reason?: string, preferredEmployeeId?: string) => {
-    setIsAssistanceActive(true);
-
-    try {
-      const call = await kioskSync.triggerCall({
-        aisle: 'Pasillo 4 - Mueblería Central',
-        department: 'Muebles & Electrónica',
-        reason: reason || 'Llamada desde Kiosco Tótem',
-        preferredEmployeeId,
-      });
-      if (call) {
-        setActiveCall(call);
-        if (call.assignedAssociateName) {
-          setActiveAssociateName(call.assignedAssociateName);
-        }
-      }
-    } catch {
-      setActiveAssociateName('Mariana Gómez (Asesora de Piso)');
-    }
+  const handleOpenShareModal = (tab: 'staff' | 'admin' | 'kiosk_api' | 'deploy' = 'staff') => {
+    setShareModalTab(tab);
+    setIsShareModalOpen(true);
   };
-
-  const handleCancelAssistance = async () => {
-    setIsAssistanceActive(false);
-    setActiveCall(null);
-    try {
-      await kioskSync.cancelCall();
-    } catch {
-      // Fallback
-    }
-  };
-
-  // Keyboard shortcut listener for physical arcade button (Spacebar)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && (e.target as HTMLElement).tagName !== 'INPUT') {
-        e.preventDefault();
-        handleTriggerAssistance('Pulsación detectada desde Entrada USB Hardware (Tecla ESPACIO)');
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   return (
     <div className="min-h-screen bg-[#040915] text-slate-100 flex flex-col justify-start relative overflow-x-hidden selection:bg-amber-400 selection:text-[#002B66]">
-      {/* Background ambient showroom lights */}
-      <div className="fixed inset-0 pointer-events-none opacity-25">
+      {/* Luces ambientales showroom de fondo */}
+      <div className="fixed inset-0 pointer-events-none opacity-20">
         <div className="absolute top-10 left-1/3 w-[600px] h-[600px] bg-blue-600 rounded-full blur-[180px]"></div>
         <div className="absolute bottom-10 right-1/4 w-[500px] h-[500px] bg-amber-500 rounded-full blur-[200px]"></div>
       </div>
 
-      {/* VISTA 1: APP MÓVIL DE ADMINISTRADOR Y EMPLEADOS (Para probar en celular) */}
-      {activeView === 'admin' ? (
-        <AdminEmployeePanel onBackToKiosk={() => setActiveView('kiosk')} />
-      ) : (
-        /* VISTA 2: TÓTEM KIOSCO COPPEL ASISTENCIA */
-        <PhysicalTotemFrame
-          onOpenHardwareModal={() => setIsHardwareModalOpen(true)}
-          onOpenAdminPanel={() => setActiveView('admin')}
-          onOpenSyncModal={() => setIsSyncModalOpen(true)}
-          isAssistanceActive={isAssistanceActive}
-          onTriggerAssistance={handleTriggerAssistance}
-          onCancelAssistance={handleCancelAssistance}
-          activeAssociateName={activeAssociateName}
-          activeCall={activeCall}
-        />
-      )}
+      {/* BARRA SUPERIOR: SELECTOR DE PERFILES Y BOTÓN DE COMPARTIR */}
+      <nav className="w-full bg-slate-950/95 border-b border-slate-800 px-3 sm:px-6 py-2.5 backdrop-blur-md sticky top-0 z-40 shadow-xl flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex items-center space-x-2.5">
+          <div className="w-8 h-8 rounded-xl bg-amber-400 text-[#002B66] flex items-center justify-center font-black text-sm shadow">
+            <i className="fa-solid fa-key"></i>
+          </div>
+          <div>
+            <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight block leading-none">
+              Coppel Staff & Despacho
+            </span>
+            <span className="text-[10px] text-amber-400 font-mono">
+              Sistema de Asistencia en Piso
+            </span>
+          </div>
+        </div>
 
-      {/* Modal de Sincronización QR para probar con 2 Dispositivos */}
-      <TwoDeviceSyncModal
-        isOpen={isSyncModalOpen}
-        onClose={() => setIsSyncModalOpen(false)}
-        onOpenAdminInSameWindow={() => {
-          setIsSyncModalOpen(false);
-          setActiveView('admin');
-        }}
-      />
+        <div className="flex items-center space-x-2">
+          {/* BOTÓN RÁPIDO: COMPARTIR / CONECTAR KIOSCO */}
+          <button
+            onClick={() => handleOpenShareModal('kiosk_api')}
+            className="py-1.5 px-3 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl text-xs font-bold border border-blue-500/40 shadow flex items-center space-x-1.5 transition-all active:scale-95"
+            title="Conectar con Kiosco Tótem externo o compartir links con QR"
+          >
+            <i className="fa-solid fa-plug-circle-bolt text-amber-400"></i>
+            <span className="hidden sm:inline">Conectar Kiosco / QR</span>
+            <span className="sm:hidden">Conectar</span>
+          </button>
 
-      {/* Modal Interactivo de Hardware, Pantallas, Circuitos y Presupuesto */}
-      <HardwareBlueprintModal
-        isOpen={isHardwareModalOpen}
-        onClose={() => setIsHardwareModalOpen(false)}
+          {/* SELECTOR RÁPIDO DE PERFIL CON 1 CLIC */}
+          <div className="flex items-center bg-slate-900 p-1 rounded-2xl border border-slate-800 text-xs font-bold shadow-inner">
+            <button
+              onClick={() => setActiveRole('admin')}
+              className={`py-1.5 px-2.5 sm:px-4 rounded-xl transition-all flex items-center space-x-1.5 ${
+                activeRole === 'admin'
+                  ? 'bg-amber-400 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <i className="fa-solid fa-shield-halved text-xs"></i>
+              <span>Admin</span>
+            </button>
+
+            <button
+              onClick={() => setActiveRole('staff')}
+              className={`py-1.5 px-2.5 sm:px-4 rounded-xl transition-all flex items-center space-x-1.5 ${
+                activeRole === 'staff'
+                  ? 'bg-amber-400 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <i className="fa-solid fa-user-tag text-xs"></i>
+              <span>Asesor</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* CONTENIDO PRINCIPAL SEGÚN EL ROL SELECCIONADO */}
+      <main className="flex-1 w-full pb-8 pt-2">
+        {activeRole === 'admin' ? (
+          /* PERFIL 1: TABLERO DEL ADMINISTRADOR (SUPERVISOR DE TIENDA) */
+          <AdminDashboardView
+            onSwitchToStaffRole={() => setActiveRole('staff')}
+            onOpenShareModal={handleOpenShareModal}
+          />
+        ) : (
+          /* PERFIL 2: PERSONAL QUE ATIENDE (ASESOR EN PISO - ACEPTAR O RECHAZAR) */
+          <StaffAttendantView
+            onSwitchToAdminRole={() => setActiveRole('admin')}
+            onOpenShareModal={handleOpenShareModal}
+          />
+        )}
+      </main>
+
+      {/* MODAL DE COMPARTIR LINKS, CÓDIGOS QR Y CONEXIÓN CON KIOSCO EXTERNO */}
+      <ShareDevicesModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        initialTab={shareModalTab}
       />
     </div>
   );

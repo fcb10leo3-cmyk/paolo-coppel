@@ -2,10 +2,17 @@
 [build]
   publish = "dist"
   command = "npm run build"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--legacy-peer-deps"
+
+# Serverless API routes for live cross-device sync & Totem Kiosk webhooks
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
 
 # Single Page Application routing (SPA redirect fallback)
 [[redirects]]
