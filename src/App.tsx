@@ -25,80 +25,92 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#040915] text-slate-100 flex flex-col justify-start relative overflow-x-hidden selection:bg-amber-400 selection:text-[#002B66]">
-      {/* Luces ambientales showroom de fondo */}
-      <div className="fixed inset-0 pointer-events-none opacity-20">
-        <div className="absolute top-10 left-1/3 w-[600px] h-[600px] bg-blue-600 rounded-full blur-[180px]"></div>
-        <div className="absolute bottom-10 right-1/4 w-[500px] h-[500px] bg-amber-500 rounded-full blur-[200px]"></div>
-      </div>
+    <div className="min-h-screen bg-[#F4F6F9] text-slate-800 flex flex-col justify-start relative overflow-x-hidden selection:bg-[#FFD100] selection:text-[#0047BA]">
+      {/* 1. APP HEADER ESTILO APLICACIÓN COPPEL COLABORADORES (NO PÁGINA WEB) */}
+      <header className="w-full bg-[#0047BA] text-white shadow-md sticky top-0 z-40 border-b-2 border-[#FFD100]">
+        <div className="max-w-5xl mx-auto px-3 sm:px-5 py-2.5 flex items-center justify-between gap-3">
+          {/* IDENTIDAD DE LA APP COPPEL */}
+          <div className="flex items-center space-x-2.5 shrink-0">
+            {/* Ícono Oficial: 3 puntos amarillos Coppel */}
+            <div className="flex items-center space-x-1 bg-white/15 px-2 py-1 rounded-xl border border-white/20 shadow-sm">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FFD100] shadow-sm"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FFD100] shadow-sm"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FFD100] shadow-sm"></span>
+            </div>
 
-      {/* BARRA SUPERIOR: SELECTOR DE PERFILES Y BOTÓN DE COMPARTIR */}
-      <nav className="w-full bg-slate-950/95 border-b border-slate-800 px-3 sm:px-6 py-2.5 backdrop-blur-md sticky top-0 z-40 shadow-xl flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex items-center space-x-2.5">
-          <div className="w-8 h-8 rounded-xl bg-amber-400 text-[#002B66] flex items-center justify-center font-black text-sm shadow">
-            <i className="fa-solid fa-key"></i>
+            <div>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-xl sm:text-2xl font-black text-white tracking-tight leading-none font-sans">
+                  Coppel
+                </span>
+                <span className="bg-[#FFD100] text-[#0047BA] text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-sm">
+                  App Piso
+                </span>
+              </div>
+              <div className="flex items-center space-x-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse"></span>
+                <span className="text-[10px] text-blue-100 font-medium leading-none">
+                  Red de Asistencia en Tienda
+                </span>
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight block leading-none">
-              Coppel Staff & Despacho
-            </span>
-            <span className="text-[10px] text-amber-400 font-mono">
-              Sistema de Asistencia en Piso
-            </span>
-          </div>
-        </div>
 
-        <div className="flex items-center space-x-2">
-          {/* BOTÓN RÁPIDO: COMPARTIR / CONECTAR KIOSCO */}
-          <button
-            onClick={() => handleOpenShareModal('kiosk_api')}
-            className="py-1.5 px-3 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl text-xs font-bold border border-blue-500/40 shadow flex items-center space-x-1.5 transition-all active:scale-95"
-            title="Conectar con Kiosco Tótem externo o compartir links con QR"
-          >
-            <i className="fa-solid fa-plug-circle-bolt text-amber-400"></i>
-            <span className="hidden sm:inline">Conectar Kiosco / QR</span>
-            <span className="sm:hidden">Conectar</span>
-          </button>
-
-          {/* SELECTOR RÁPIDO DE PERFIL CON 1 CLIC */}
-          <div className="flex items-center bg-slate-900 p-1 rounded-2xl border border-slate-800 text-xs font-bold shadow-inner">
+          {/* ACCIONES DE APP: SELECTOR DE ROL Y CONEXIÓN */}
+          <div className="flex items-center space-x-2 shrink-0">
+            {/* BOTÓN CONECTAR / QR */}
             <button
-              onClick={() => setActiveRole('admin')}
-              className={`py-1.5 px-2.5 sm:px-4 rounded-xl transition-all flex items-center space-x-1.5 ${
-                activeRole === 'admin'
-                  ? 'bg-amber-400 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              onClick={() => handleOpenShareModal('kiosk_api')}
+              className="py-1.5 px-2.5 sm:px-3 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-bold border border-white/20 shadow flex items-center space-x-1.5 transition-all active:scale-95 cursor-pointer"
+              title="Vincular con Kiosco o compartir códigos QR para celular"
             >
-              <i className="fa-solid fa-shield-halved text-xs"></i>
-              <span>Admin</span>
+              <i className="fa-solid fa-qrcode text-[#FFD100]"></i>
+              <span className="hidden sm:inline">QR / Vincular</span>
+              <span className="sm:hidden">QR</span>
             </button>
 
-            <button
-              onClick={() => setActiveRole('staff')}
-              className={`py-1.5 px-2.5 sm:px-4 rounded-xl transition-all flex items-center space-x-1.5 ${
-                activeRole === 'staff'
-                  ? 'bg-amber-400 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <i className="fa-solid fa-user-tag text-xs"></i>
-              <span>Asesor</span>
-            </button>
+            {/* SELECTOR RÁPIDO DE MODO EN LA APP: SUPERVISOR (ADMIN) VS ASESOR (STAFF) */}
+            <div className="flex items-center bg-[#003899] p-1 rounded-2xl border border-white/20 shadow-inner">
+              <button
+                onClick={() => setActiveRole('staff')}
+                className={`py-1.5 px-2.5 sm:px-3 rounded-xl text-xs transition-all flex items-center space-x-1 cursor-pointer ${
+                  activeRole === 'staff'
+                    ? 'bg-[#FFD100] text-[#0047BA] shadow font-black'
+                    : 'text-blue-100 hover:text-white font-bold'
+                }`}
+                title="Modo Asesor en Piso (Atender clientes y registrar puntos)"
+              >
+                <i className="fa-solid fa-headset text-xs"></i>
+                <span>Asesor</span>
+              </button>
+
+              <button
+                onClick={() => setActiveRole('admin')}
+                className={`py-1.5 px-2.5 sm:px-3 rounded-xl text-xs transition-all flex items-center space-x-1 cursor-pointer ${
+                  activeRole === 'admin'
+                    ? 'bg-[#FFD100] text-[#0047BA] shadow font-black'
+                    : 'text-blue-100 hover:text-white font-bold'
+                }`}
+                title="Modo Supervisor / Tablero de tienda"
+              >
+                <i className="fa-solid fa-shield-halved text-xs"></i>
+                <span>Admin</span>
+              </button>
+            </div>
           </div>
         </div>
-      </nav>
+      </header>
 
-      {/* CONTENIDO PRINCIPAL SEGÚN EL ROL SELECCIONADO */}
-      <main className="flex-1 w-full pb-8 pt-2">
+      {/* 2. CONTENIDO PRINCIPAL DE LA APP (CONSERVA POSICIONES Y DISEÑO) */}
+      <main className="flex-1 w-full max-w-5xl mx-auto p-2 sm:p-4 pb-24 sm:pb-12">
         {activeRole === 'admin' ? (
-          /* PERFIL 1: TABLERO DEL ADMINISTRADOR (SUPERVISOR DE TIENDA) */
+          /* VISTA 1: TABLERO DEL ADMINISTRADOR (SUPERVISOR EN PISO) */
           <AdminDashboardView
             onSwitchToStaffRole={() => setActiveRole('staff')}
             onOpenShareModal={handleOpenShareModal}
           />
         ) : (
-          /* PERFIL 2: PERSONAL QUE ATIENDE (ASESOR EN PISO - ACEPTAR O RECHAZAR) */
+          /* VISTA 2: TERMINAL DEL ASESOR EN PISO */
           <StaffAttendantView
             onSwitchToAdminRole={() => setActiveRole('admin')}
             onOpenShareModal={handleOpenShareModal}
@@ -106,7 +118,55 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL DE COMPARTIR LINKS, CÓDIGOS QR Y CONEXIÓN CON KIOSCO EXTERNO */}
+      {/* 3. BARRA DE NAVEGACIÓN INFERIOR ESTILO APP NATIVA (MÓVIL / PANTALLA TÁCTIL) */}
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-white border-t-2 border-[#0047BA] shadow-2xl z-40 px-3 py-1.5 flex items-center justify-around">
+        <button
+          type="button"
+          onClick={() => setActiveRole('staff')}
+          className={`flex-1 py-1 px-2 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
+            activeRole === 'staff'
+              ? 'text-[#0047BA] font-black'
+              : 'text-slate-500 font-bold hover:text-slate-700'
+          }`}
+        >
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
+            activeRole === 'staff' ? 'bg-[#0047BA] text-[#FFD100] shadow' : 'bg-slate-100'
+          }`}>
+            <i className="fa-solid fa-headset"></i>
+          </div>
+          <span className="text-[10px] mt-0.5">Asesor</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveRole('admin')}
+          className={`flex-1 py-1 px-2 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
+            activeRole === 'admin'
+              ? 'text-[#0047BA] font-black'
+              : 'text-slate-500 font-bold hover:text-slate-700'
+          }`}
+        >
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
+            activeRole === 'admin' ? 'bg-[#0047BA] text-[#FFD100] shadow' : 'bg-slate-100'
+          }`}>
+            <i className="fa-solid fa-shield-halved"></i>
+          </div>
+          <span className="text-[10px] mt-0.5">Supervisor</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleOpenShareModal('kiosk_api')}
+          className="flex-1 py-1 px-2 rounded-xl flex flex-col items-center justify-center text-slate-500 font-bold hover:text-[#0047BA] transition-all cursor-pointer"
+        >
+          <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-sm text-[#0047BA]">
+            <i className="fa-solid fa-qrcode"></i>
+          </div>
+          <span className="text-[10px] mt-0.5">Vincular QR</span>
+        </button>
+      </nav>
+
+      {/* 4. MODAL DE VINCULACIÓN QR / CONEXIÓN KIOSCO */}
       <ShareDevicesModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}

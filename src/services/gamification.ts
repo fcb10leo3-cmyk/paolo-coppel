@@ -178,20 +178,28 @@ export function calculatePointsForAssistance(params: {
   outcome: 'resuelto_exitoso' | 'no_resuelto';
   elapsedSeconds?: number;
   currentStreak?: number;
+  hasProofBonus?: boolean;
 }): {
   basePoints: number;
   speedBonus: number;
   streakBonus: number;
+  verificationBonus: number;
   totalPoints: number;
   reasons: string[];
 } {
   if (params.outcome !== 'resuelto_exitoso') {
+    const verificationBonus = params.hasProofBonus ? 15 : 0;
+    const reasons: string[] = ['+10 PTS por esfuerzo de atención en piso'];
+    if (verificationBonus > 0) {
+      reasons.push('+15 PTS Evidencia adjunta de intento en piso');
+    }
     return {
-      basePoints: 10, // Pequeño incentivo por acudir y atender en piso
+      basePoints: 10,
       speedBonus: 0,
       streakBonus: 0,
-      totalPoints: 10,
-      reasons: ['+10 PTS por esfuerzo de atención en piso'],
+      verificationBonus,
+      totalPoints: 10 + verificationBonus,
+      reasons,
     };
   }
 
@@ -219,12 +227,20 @@ export function calculatePointsForAssistance(params: {
     reasons.push(`+25 PTS Racha activa (${streak} consecutivas) 🔥`);
   }
 
-  const totalPoints = basePoints + speedBonus + streakBonus;
+  // Bono de verificación y prueba de cumplimiento de servicio al cliente
+  let verificationBonus = 0;
+  if (params.hasProofBonus) {
+    verificationBonus = 25;
+    reasons.push('+25 PTS Bono por Validación y Evidencia de Cumplimiento 📷/PIN');
+  }
+
+  const totalPoints = basePoints + speedBonus + streakBonus + verificationBonus;
 
   return {
     basePoints,
     speedBonus,
     streakBonus,
+    verificationBonus,
     totalPoints,
     reasons,
   };

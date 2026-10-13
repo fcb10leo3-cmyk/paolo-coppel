@@ -122,6 +122,46 @@ class SoundEffectsService {
     }
   }
 
+  // Camera shutter click sound
+  public playCameraClick() {
+    try {
+      const ctx = this.getAudioContext();
+      const now = ctx.currentTime;
+
+      // Click sound 1 (shutter opening)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'square';
+      osc1.frequency.setValueAtTime(1200, now);
+      osc1.frequency.exponentialRampToValueAtTime(300, now + 0.04);
+      gain1.gain.setValueAtTime(0.3, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.04);
+
+      // Click sound 2 (shutter closing)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(800, now + 0.06);
+      osc2.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+      gain2.gain.setValueAtTime(0.35, now + 0.06);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.06);
+      osc2.stop(now + 0.1);
+
+      if ('vibrate' in navigator) {
+        navigator.vibrate(60);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
   // Request browser Web Push notification permission
   public async requestNotificationPermission(): Promise<boolean> {
     if (!('Notification' in window)) {

@@ -2,6 +2,21 @@ export type UserRole = 'admin' | 'staff';
 
 export type ResolutionOutcome = 'resuelto_exitoso' | 'no_resuelto';
 
+export type VerificationProofType = 'photo' | 'customer_pin' | 'signature' | 'ticket_folio' | 'in_person';
+
+export interface AssistanceVerificationProof {
+  type: VerificationProofType;
+  photoUrl?: string;
+  customerPin?: string;
+  verifiedPin?: boolean;
+  signatureDataUrl?: string;
+  ticketFolio?: string;
+  timestamp: string;
+  verifiedByAssociateId?: string;
+  verifiedByAssociateName?: string;
+  notes?: string;
+}
+
 export interface Employee {
   id: string;
   name: string;
@@ -48,7 +63,10 @@ export interface AssistanceAlert {
   lastRejectedByName?: string;
   dispatchedByAdmin?: boolean;
   outcome?: ResolutionOutcome;
+  outcomeCategory?: string; // Motivo común específico seleccionado
   resolutionNotes?: string;
+  customerPin?: string; // PIN de 4 dígitos para comprobación de presencia
+  verificationProof?: AssistanceVerificationProof; // Evidencia que avala que el asesor atendió al cliente
 }
 
 export interface StoreMetrics {

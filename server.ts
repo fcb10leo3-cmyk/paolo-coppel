@@ -50,7 +50,10 @@ interface AssistanceAlertRecord {
   lastRejectedByName?: string;
   dispatchedByAdmin?: boolean;
   outcome?: string;
+  outcomeCategory?: string;
   resolutionNotes?: string;
+  customerPin?: string;
+  verificationProof?: any;
 }
 
 let employeesList: EmployeeRecord[] = [
@@ -384,6 +387,7 @@ async function startServer() {
       assignedAssociateRole: assigned.role,
       assignedAssociateId: assigned.id,
       estimatedArrivalSeconds: 30,
+      customerPin: req.body.customerPin || Math.floor(1000 + Math.random() * 9000).toString(),
     };
 
     activeAssistanceCall = newAlert;
@@ -532,7 +536,7 @@ async function startServer() {
 
   // Employee or Admin marks request as completed / resolved ("Atendido y Resuelto" con resultado)
   app.post('/api/assistance/resolve', (req: Request, res: Response) => {
-    const { alertId, outcome, resolutionNotes } = req.body;
+    const { alertId, outcome, outcomeCategory, resolutionNotes, verificationProof, pointsAwarded } = req.body;
 
     let targetAlert = activeAssistanceCall;
     if (!targetAlert && alertId) {
@@ -546,6 +550,8 @@ async function startServer() {
       targetAlert.status = 'resolved';
       targetAlert.resolvedAt = timeStr;
       targetAlert.outcome = outcome || 'resuelto_exitoso';
+      targetAlert.outcomeCategory = outcomeCategory;
+      targetAlert.verificationProof = verificationProof;
       targetAlert.resolutionNotes = resolutionNotes || (outcome === 'no_resuelto' ? 'No se pudo resolver en piso' : 'Atendido exitosamente');
 
       if (targetAlert.assignedAssociateId) {
@@ -553,7 +559,7 @@ async function startServer() {
         if (emp) {
           emp.totalHelpedToday += 1;
           emp.status = 'disponible';
-          const pointsToAdd = outcome === 'resuelto_exitoso' ? 100 : 10;
+          const pointsToAdd = typeof pointsAwarded === 'number' ? pointsAwarded : outcome === 'resuelto_exitoso' ? 100 : 10;
           emp.points = (emp.points || 0) + pointsToAdd;
           if (outcome === 'resuelto_exitoso') {
             emp.successfulAssistsToday = (emp.successfulAssistsToday || 0) + 1;

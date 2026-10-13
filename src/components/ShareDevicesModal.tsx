@@ -180,57 +180,57 @@ async function solicitarAsesorCoppel() {
 }`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none">
-      <div className="bg-slate-900 border-2 border-slate-700 w-full max-w-2xl rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 text-slate-100 max-h-[94vh] overflow-y-auto screen-scroll">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/70 backdrop-blur-md animate-in fade-in duration-200 select-none">
+      <div className="bg-white border-2 border-[#0047BA] w-full max-w-2xl rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 text-slate-800 max-h-[94vh] overflow-y-auto screen-scroll">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 text-slate-950 flex items-center justify-center font-black text-lg shadow-lg">
+            <div className="w-10 h-10 rounded-2xl bg-[#FFD100] text-[#0047BA] flex items-center justify-center font-black text-lg shadow-md border border-amber-300">
               <i className="fa-solid fa-share-nodes"></i>
             </div>
             <div>
-              <h3 className="font-extrabold text-base sm:text-lg text-white">
+              <h3 className="font-extrabold text-base sm:text-lg text-[#0047BA]">
                 Compartir Enlaces, QR & Conectar Kiosco
               </h3>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 Sincronización en tiempo real para Netlify, Celulares y Tótem Externo
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
           >
             <i className="fa-solid fa-xmark"></i>
           </button>
         </div>
 
         {/* BARRA DE CONFIGURACIÓN DE URL PÚBLICA (SOLUCIÓN ERROR 404 EN QR) */}
-        <div className="bg-slate-950 border border-slate-800 p-3 sm:p-4 rounded-2xl space-y-2.5">
+        <div className="bg-[#F8FAFC] border-2 border-slate-200 p-3 sm:p-4 rounded-2xl space-y-2.5">
           <div className="flex items-start justify-between gap-2">
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <i className="fa-solid fa-globe text-amber-400"></i>
+                <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <i className="fa-solid fa-globe text-[#0047BA]"></i>
                   Dominio Público para Celulares y QR:
                 </span>
                 {customOrigin ? (
-                  <span className="bg-emerald-950 border border-emerald-600 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-emerald-100 border border-emerald-400 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
                     ✓ Netlify Configurado
                   </span>
                 ) : isLocalOrSandbox ? (
-                  <span className="bg-amber-950 border border-amber-600 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-amber-100 border border-amber-400 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
                     ⚠️ Vista Previa / Local
                   </span>
                 ) : (
-                  <span className="bg-blue-950 border border-blue-600 text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-blue-100 border border-blue-400 text-[#0047BA] text-[10px] font-bold px-2 py-0.5 rounded-full">
                     ✓ Dominio Detectado
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
                 {isLocalOrSandbox && !customOrigin ? (
-                  <span className="text-amber-300">
+                  <span className="text-amber-800">
                     <strong>¿Por qué daba error 404 al escanear?</strong> En la vista previa interna de desarrollo,
                     el celular no tiene acceso. Para que el QR abra en cualquier celular sin 404, pega tu URL de Netlify
                     abajo:
@@ -244,19 +244,19 @@ async function solicitarAsesorCoppel() {
 
           <form onSubmit={handleSaveCustomUrl} className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
-              <i className="fa-solid fa-link absolute left-3 top-3 text-slate-500 text-xs"></i>
+              <i className="fa-solid fa-link absolute left-3 top-3 text-slate-400 text-xs"></i>
               <input
                 type="text"
                 placeholder="https://tu-sitio.netlify.app"
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-xl py-2 pl-8 pr-3 text-xs text-amber-300 font-mono outline-none"
+                className="w-full bg-white border-2 border-slate-300 focus:border-[#0047BA] rounded-xl py-2 pl-8 pr-3 text-xs text-slate-800 font-mono outline-none"
               />
             </div>
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="py-2 px-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition-colors shrink-0"
+                className="py-2 px-3.5 bg-[#FFD100] hover:bg-amber-400 text-[#0047BA] font-black rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition-colors shrink-0 cursor-pointer border border-amber-300"
               >
                 <i className="fa-solid fa-check"></i>
                 <span>Aplicar a QR</span>
@@ -265,7 +265,7 @@ async function solicitarAsesorCoppel() {
                 <button
                   type="button"
                   onClick={handleResetToCurrentOrigin}
-                  className="py-2 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs transition-colors"
+                  className="py-2 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs transition-colors cursor-pointer"
                   title="Restablecer URL"
                 >
                   <i className="fa-solid fa-rotate-left"></i>
@@ -275,7 +275,7 @@ async function solicitarAsesorCoppel() {
           </form>
 
           {isSavedUrlBanner && (
-            <div className="text-[11px] text-emerald-400 font-bold flex items-center gap-1.5 animate-in fade-in">
+            <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1.5 animate-in fade-in">
               <i className="fa-solid fa-circle-check"></i>
               <span>¡URL pública guardada! Los códigos QR y enlaces han sido actualizados.</span>
             </div>
@@ -283,13 +283,13 @@ async function solicitarAsesorCoppel() {
         </div>
 
         {/* TABS SELECTORAS */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-bold">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-bold">
           <button
             onClick={() => setActiveTab('staff')}
-            className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 text-center ${
+            className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 text-center cursor-pointer ${
               activeTab === 'staff'
-                ? 'bg-amber-400 text-slate-950 font-black shadow-md'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#0047BA] text-white font-black shadow-md'
+                : 'text-slate-600 hover:text-[#0047BA]'
             }`}
           >
             <i className="fa-solid fa-mobile-screen-button"></i>
@@ -298,10 +298,10 @@ async function solicitarAsesorCoppel() {
 
           <button
             onClick={() => setActiveTab('admin')}
-            className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 text-center ${
+            className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 text-center cursor-pointer ${
               activeTab === 'admin'
-                ? 'bg-amber-400 text-slate-950 font-black shadow-md'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#0047BA] text-white font-black shadow-md'
+                : 'text-slate-600 hover:text-[#0047BA]'
             }`}
           >
             <i className="fa-solid fa-shield-halved"></i>
@@ -310,10 +310,10 @@ async function solicitarAsesorCoppel() {
 
           <button
             onClick={() => setActiveTab('kiosk_api')}
-            className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 text-center ${
+            className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 text-center cursor-pointer ${
               activeTab === 'kiosk_api'
-                ? 'bg-amber-400 text-slate-950 font-black shadow-md'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#0047BA] text-white font-black shadow-md'
+                : 'text-slate-600 hover:text-[#0047BA]'
             }`}
           >
             <i className="fa-solid fa-plug-circle-bolt"></i>
@@ -322,10 +322,10 @@ async function solicitarAsesorCoppel() {
 
           <button
             onClick={() => setActiveTab('deploy')}
-            className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 text-center ${
+            className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 text-center cursor-pointer ${
               activeTab === 'deploy'
-                ? 'bg-amber-400 text-slate-950 font-black shadow-md'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#0047BA] text-white font-black shadow-md'
+                : 'text-slate-600 hover:text-[#0047BA]'
             }`}
           >
             <i className="fa-solid fa-cloud-arrow-up"></i>
@@ -336,15 +336,15 @@ async function solicitarAsesorCoppel() {
         {/* TAB 1: APP ASESORES */}
         {activeTab === 'staff' && (
           <div className="space-y-4 animate-in fade-in">
-            <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row items-center gap-4">
+            <div className="bg-white border-2 border-slate-200 p-4 rounded-2xl flex flex-col sm:flex-row items-center gap-4 shadow-sm">
               {/* QR Code */}
-              <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 shrink-0 text-center shadow-inner">
+              <div className="bg-white p-3 rounded-2xl border-2 border-[#0047BA] shrink-0 text-center shadow-md">
                 <img
                   src={generateQrUrl(staffUrl)}
                   alt="QR App Asesor"
-                  className="w-36 h-36 rounded-xl mx-auto border border-amber-400/20"
+                  className="w-36 h-36 rounded-xl mx-auto border border-slate-200"
                 />
-                <span className="text-[10px] text-amber-300 font-bold block mt-1.5">
+                <span className="text-[10px] text-[#0047BA] font-black block mt-1.5">
                   Escanea con tu celular
                 </span>
               </div>
@@ -352,25 +352,25 @@ async function solicitarAsesorCoppel() {
               {/* Info y Enlace */}
               <div className="space-y-2.5 flex-1 min-w-0 text-center sm:text-left">
                 <div>
-                  <span className="text-[10px] text-emerald-400 font-black uppercase tracking-wider block">
+                  <span className="text-[10px] text-emerald-700 font-black uppercase tracking-wider block">
                     ● Enlace Móvil Optimizado (Pantalla Completa)
                   </span>
-                  <h4 className="font-extrabold text-sm sm:text-base text-white">
+                  <h4 className="font-extrabold text-sm sm:text-base text-slate-900">
                     App para Asesores y Personal en Piso
                   </h4>
-                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
-                    Abre este link en cualquier celular (Android o iPhone). Se ajusta al 100% de la pantalla sin cortes y funciona como radio-localizador para recibir alertas con sonido, aceptar casos o rechazarlos.
+                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                    Abre este link en cualquier celular (Android o iPhone). Se ajusta al 100% de la pantalla sin cortes y funciona como radio-localizador para recibir alertas con sonido, tomar fotos de evidencia, aceptar casos o resolverlos.
                   </p>
                 </div>
 
-                <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 font-mono text-xs text-amber-300 truncate">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-300 font-mono text-xs text-[#0047BA] font-bold truncate">
                   {staffUrl}
                 </div>
 
                 <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
                   <button
                     onClick={() => copyToClipboard(staffUrl, 'staff')}
-                    className="py-2 px-3.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs shadow flex items-center space-x-1.5 transition-colors active:scale-95"
+                    className="py-2 px-3.5 bg-[#FFD100] hover:bg-amber-400 text-[#0047BA] font-black rounded-xl text-xs shadow flex items-center space-x-1.5 transition-colors active:scale-95 cursor-pointer border border-amber-300"
                   >
                     <i className="fa-solid fa-copy"></i>
                     <span>{copiedType === 'staff' ? '¡Enlace Copiado!' : 'Copiar Enlace'}</span>
@@ -380,7 +380,7 @@ async function solicitarAsesorCoppel() {
                     href={staffUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="py-2 px-3.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs border border-slate-700 flex items-center space-x-1.5 transition-colors"
+                    className="py-2 px-3.5 bg-[#0047BA] hover:bg-[#003899] text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 transition-colors shadow-sm"
                   >
                     <i className="fa-solid fa-arrow-up-right-from-square"></i>
                     <span>Abrir en Pestaña Nueva</span>
@@ -389,13 +389,13 @@ async function solicitarAsesorCoppel() {
               </div>
             </div>
 
-            <div className="bg-blue-950/40 border border-blue-900/60 p-3 rounded-2xl text-xs text-blue-200 space-y-1">
-              <span className="font-black text-white flex items-center gap-1.5">
-                <i className="fa-solid fa-lightbulb text-amber-400"></i>
+            <div className="bg-blue-50 border border-blue-200 p-3 rounded-2xl text-xs text-[#0047BA] space-y-1">
+              <span className="font-black text-[#0047BA] flex items-center gap-1.5">
+                <i className="fa-solid fa-lightbulb text-amber-500"></i>
                 Tip para Piso de Venta:
               </span>
-              <p className="text-[11px] text-blue-300">
-                Puedes abrir el link en tantos teléfonos como asesores haya en tienda. Cada colaborador puede seleccionar su nombre en la barra superior (ej. Mariana, Jorge, Claudia) para recibir las alertas asignadas.
+              <p className="text-[11px] text-slate-600">
+                Puedes abrir el link en tantos teléfonos como asesores haya en tienda. Cada colaborador puede seleccionar su nombre en la barra superior para recibir las alertas asignadas.
               </p>
             </div>
           </div>
@@ -404,15 +404,15 @@ async function solicitarAsesorCoppel() {
         {/* TAB 2: TABLERO ADMIN */}
         {activeTab === 'admin' && (
           <div className="space-y-4 animate-in fade-in">
-            <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row items-center gap-4">
+            <div className="bg-white border-2 border-slate-200 p-4 rounded-2xl flex flex-col sm:flex-row items-center gap-4 shadow-sm">
               {/* QR Code */}
-              <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 shrink-0 text-center shadow-inner">
+              <div className="bg-white p-3 rounded-2xl border-2 border-[#0047BA] shrink-0 text-center shadow-md">
                 <img
                   src={generateQrUrl(adminUrl)}
                   alt="QR Tablero Admin"
-                  className="w-36 h-36 rounded-xl mx-auto border border-amber-400/20"
+                  className="w-36 h-36 rounded-xl mx-auto border border-slate-200"
                 />
-                <span className="text-[10px] text-amber-300 font-bold block mt-1.5">
+                <span className="text-[10px] text-[#0047BA] font-black block mt-1.5">
                   Escanea para Tablet / PC
                 </span>
               </div>
@@ -420,25 +420,25 @@ async function solicitarAsesorCoppel() {
               {/* Info y Enlace */}
               <div className="space-y-2.5 flex-1 min-w-0 text-center sm:text-left">
                 <div>
-                  <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider block">
+                  <span className="text-[10px] text-[#0047BA] font-black uppercase tracking-wider block">
                     ● Centro de Despacho & Control
                   </span>
-                  <h4 className="font-extrabold text-sm sm:text-base text-white">
+                  <h4 className="font-extrabold text-sm sm:text-base text-slate-900">
                     Tablero de Supervisión de Tienda
                   </h4>
-                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                     Diseñado para la computadora del supervisor, tablet en mostrador o pantalla central. Permite redirigir alertas con 1 clic, tomar llamadas personalmente y monitorear la disponibilidad de todo el equipo.
                   </p>
                 </div>
 
-                <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 font-mono text-xs text-amber-300 truncate">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-300 font-mono text-xs text-[#0047BA] font-bold truncate">
                   {adminUrl}
                 </div>
 
                 <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
                   <button
                     onClick={() => copyToClipboard(adminUrl, 'admin')}
-                    className="py-2 px-3.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs shadow flex items-center space-x-1.5 transition-colors active:scale-95"
+                    className="py-2 px-3.5 bg-[#FFD100] hover:bg-amber-400 text-[#0047BA] font-black rounded-xl text-xs shadow flex items-center space-x-1.5 transition-colors active:scale-95 cursor-pointer border border-amber-300"
                   >
                     <i className="fa-solid fa-copy"></i>
                     <span>{copiedType === 'admin' ? '¡Enlace Copiado!' : 'Copiar Enlace'}</span>
@@ -448,7 +448,7 @@ async function solicitarAsesorCoppel() {
                     href={adminUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="py-2 px-3.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs border border-slate-700 flex items-center space-x-1.5 transition-colors"
+                    className="py-2 px-3.5 bg-[#0047BA] hover:bg-[#003899] text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 transition-colors shadow-sm"
                   >
                     <i className="fa-solid fa-arrow-up-right-from-square"></i>
                     <span>Abrir en Pestaña Nueva</span>
@@ -463,34 +463,34 @@ async function solicitarAsesorCoppel() {
         {activeTab === 'kiosk_api' && (
           <div className="space-y-4 animate-in fade-in">
             {/* Explicación de Integración */}
-            <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-3">
+            <div className="bg-white border-2 border-slate-200 p-4 rounded-2xl space-y-3 shadow-sm">
               <div>
-                <span className="text-[10px] text-cyan-400 font-black uppercase tracking-wider block">
+                <span className="text-[10px] text-[#0047BA] font-black uppercase tracking-wider block">
                   ● Conexión API REST con CORS Habilitado
                 </span>
-                <h4 className="font-extrabold text-sm sm:text-base text-white">
+                <h4 className="font-extrabold text-sm sm:text-base text-slate-900">
                   ¿Cómo conectar la otra app del Kiosco Tótem a este sistema?
                 </h4>
-                <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
                   Cuando el cliente presione <strong>"Necesito un Asesor"</strong> o el botón físico en la otra app del
-                  kiosco, esa app solo debe hacer una petición <code className="text-amber-300 bg-slate-900 px-1.5 py-0.5 rounded">POST</code>{' '}
+                  kiosco, esa app solo debe hacer una petición <code className="text-[#0047BA] bg-blue-50 font-bold px-1.5 py-0.5 rounded border border-blue-200">POST</code>{' '}
                   a este endpoint. La solicitud llegará al instante al supervisor y a los celulares del personal.
                 </p>
               </div>
 
               {/* Endpoint URL con botón copiar */}
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-400">Endpoint URL del Webhook:</label>
+                <label className="text-[11px] font-bold text-slate-500">Endpoint URL del Webhook:</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     readOnly
                     value={apiUrl}
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-2.5 font-mono text-xs text-amber-300 outline-none"
+                    className="flex-1 bg-slate-50 border-2 border-slate-300 rounded-xl p-2.5 font-mono text-xs text-[#0047BA] font-bold outline-none"
                   />
                   <button
                     onClick={() => copyToClipboard(apiUrl, 'api')}
-                    className="py-2.5 px-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs shadow flex items-center space-x-1 shrink-0 active:scale-95 transition-colors"
+                    className="py-2.5 px-3.5 bg-[#FFD100] hover:bg-amber-400 text-[#0047BA] font-black rounded-xl text-xs shadow flex items-center space-x-1 shrink-0 active:scale-95 transition-colors cursor-pointer border border-amber-300"
                   >
                     <i className="fa-solid fa-copy"></i>
                     <span>{copiedType === 'api' ? '¡Copiado!' : 'Copiar URL'}</span>
@@ -501,12 +501,12 @@ async function solicitarAsesorCoppel() {
               {/* Código listo para copiar */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-slate-400">
+                  <label className="text-[11px] font-bold text-slate-500">
                     Código JavaScript / React para la otra app:
                   </label>
                   <button
                     onClick={() => copyToClipboard(sampleSnippet, 'snippet')}
-                    className="text-[10px] text-amber-400 hover:text-amber-300 font-bold"
+                    className="text-[10px] text-[#0047BA] hover:underline font-bold cursor-pointer"
                   >
                     {copiedType === 'snippet' ? '¡Código copiado!' : 'Copiar código completo'}
                   </button>
@@ -517,10 +517,10 @@ async function solicitarAsesorCoppel() {
               </div>
 
               {/* Botón de prueba interactiva */}
-              <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="text-xs">
-                  <span className="font-bold text-white block">Prueba de Conexión en Vivo:</span>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="font-bold text-slate-900 block">Prueba de Conexión en Vivo:</span>
+                  <span className="text-[11px] text-slate-500">
                     Simula que el Kiosco externo presionó el botón en este instante
                   </span>
                 </div>
@@ -528,9 +528,9 @@ async function solicitarAsesorCoppel() {
                 <button
                   onClick={handleTestExternalCall}
                   disabled={testStatus === 'testing'}
-                  className="w-full sm:w-auto py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-black rounded-xl text-xs shadow-lg flex items-center justify-center space-x-2 active:scale-95 transition-all"
+                  className="w-full sm:w-auto py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow-md flex items-center justify-center space-x-2 active:scale-95 transition-all cursor-pointer"
                 >
-                  <i className="fa-solid fa-bolt"></i>
+                  <i className="fa-solid fa-bolt text-[#FFD100]"></i>
                   <span>{testStatus === 'testing' ? 'Disparando...' : 'Probar Llamada Externa Ahora'}</span>
                 </button>
               </div>
@@ -539,13 +539,13 @@ async function solicitarAsesorCoppel() {
                 <div
                   className={`p-3 rounded-xl text-xs font-bold flex items-center space-x-2 animate-in fade-in ${
                     testStatus === 'success'
-                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
-                      : 'bg-red-950 text-red-300 border border-red-700'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+                      : 'bg-red-50 text-red-700 border border-red-300'
                   }`}
                 >
                   <i
                     className={`fa-solid ${
-                      testStatus === 'success' ? 'fa-circle-check text-emerald-400' : 'fa-circle-xmark text-red-400'
+                      testStatus === 'success' ? 'fa-circle-check text-emerald-600' : 'fa-circle-xmark text-red-600'
                     }`}
                   ></i>
                   <span>{testResultMsg}</span>
@@ -555,24 +555,24 @@ async function solicitarAsesorCoppel() {
 
             {/* Registro de llamadas recibidas desde kioscos externos */}
             {logs.length > 0 && (
-              <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-2">
-                <span className="text-[11px] font-black uppercase text-slate-400 flex items-center gap-1.5">
-                  <i className="fa-solid fa-list-check text-amber-400"></i>
+              <div className="bg-white border-2 border-slate-200 p-3.5 rounded-2xl space-y-2 shadow-sm">
+                <span className="text-[11px] font-black uppercase text-slate-500 flex items-center gap-1.5">
+                  <i className="fa-solid fa-list-check text-[#0047BA]"></i>
                   Últimas llamadas recibidas por API:
                 </span>
                 <div className="space-y-1.5 max-h-32 overflow-y-auto screen-scroll">
                   {logs.slice(0, 4).map((log) => (
                     <div
                       key={log.id}
-                      className="bg-slate-900 border border-slate-800/80 p-2 rounded-xl text-[11px] flex items-center justify-between gap-2"
+                      className="bg-slate-50 border border-slate-200 p-2 rounded-xl text-[11px] flex items-center justify-between gap-2"
                     >
                       <div className="min-w-0">
-                        <span className="font-bold text-white block truncate">{log.aisle}</span>
-                        <span className="text-slate-400 text-[10px] block truncate">{log.reason}</span>
+                        <span className="font-bold text-slate-800 block truncate">{log.aisle}</span>
+                        <span className="text-slate-500 text-[10px] block truncate">{log.reason}</span>
                       </div>
                       <div className="text-right shrink-0">
-                        <span className="text-emerald-400 font-mono text-[10px] block">✓ Procesada</span>
-                        <span className="text-slate-500 font-mono text-[9px] block">{log.timestamp}</span>
+                        <span className="text-emerald-700 font-mono font-bold text-[10px] block">✓ Procesada</span>
+                        <span className="text-slate-400 font-mono text-[9px] block">{log.timestamp}</span>
                       </div>
                     </div>
                   ))}
@@ -585,20 +585,20 @@ async function solicitarAsesorCoppel() {
         {/* TAB 4: GUÍA GIT & NETLIFY */}
         {activeTab === 'deploy' && (
           <div className="space-y-4 animate-in fade-in">
-            <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-3">
+            <div className="bg-white border-2 border-slate-200 p-4 rounded-2xl space-y-3 shadow-sm">
               <div className="flex items-center space-x-2">
-                <span className="text-xs font-black uppercase text-amber-400">
-                  <i className="fa-brands fa-github text-white mr-1.5"></i>
+                <span className="text-xs font-black uppercase text-[#0047BA]">
+                  <i className="fa-brands fa-github mr-1.5"></i>
                   Paso 1: Darle Push a GitHub
                 </span>
               </div>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-600">
                 Abre la terminal en tu proyecto y corre estos comandos para subir todo tu código a GitHub:
               </p>
               <div className="relative">
                 <pre className="bg-slate-900 p-3 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 overflow-x-auto">
 {`git add .
-git commit -m "feat: Coppel Staff con Netlify Functions y QR multidispositivo"
+git commit -m "feat: Coppel Staff App con Camara y QR multidispositivo"
 git branch -M main
 git remote add origin https://github.com/TU_USUARIO/TU_REPOSITORIO.git
 git push -u origin main`}
@@ -606,25 +606,25 @@ git push -u origin main`}
                 <button
                   onClick={() =>
                     copyToClipboard(
-                      `git add .\ngit commit -m "feat: Coppel Staff con Netlify Functions y QR multidispositivo"\ngit branch -M main\ngit remote add origin https://github.com/TU_USUARIO/TU_REPOSITORIO.git\ngit push -u origin main`,
+                      `git add .\ngit commit -m "feat: Coppel Staff App con Camara y QR multidispositivo"\ngit branch -M main\ngit remote add origin https://github.com/TU_USUARIO/TU_REPOSITORIO.git\ngit push -u origin main`,
                       'git_commands'
                     )
                   }
-                  className="absolute top-2 right-2 py-1 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] rounded-lg font-bold"
+                  className="absolute top-2 right-2 py-1 px-2.5 bg-white text-slate-900 text-[11px] rounded-lg font-bold shadow cursor-pointer"
                 >
                   {copiedType === 'git_commands' ? '¡Copiado!' : 'Copiar comandos'}
                 </button>
               </div>
             </div>
 
-            <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-3">
+            <div className="bg-white border-2 border-slate-200 p-4 rounded-2xl space-y-3 shadow-sm">
               <div className="flex items-center space-x-2">
-                <span className="text-xs font-black uppercase text-cyan-400">
-                  <i className="fa-solid fa-cloud text-cyan-400 mr-1.5"></i>
+                <span className="text-xs font-black uppercase text-[#0047BA]">
+                  <i className="fa-solid fa-cloud mr-1.5"></i>
                   Paso 2: Conectar con Netlify (¡Sin error 404!)
                 </span>
               </div>
-              <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
+              <div className="space-y-2 text-xs text-slate-600 leading-relaxed">
                 <p>
                   1. Entra a <strong>app.netlify.com</strong> y da clic en <strong>"Add new site" ➜ "Import an existing project"</strong>.
                 </p>
@@ -632,16 +632,16 @@ git push -u origin main`}
                   2. Selecciona tu repositorio de <strong>GitHub</strong>.
                 </p>
                 <p>
-                  3. Netlify leerá automáticamente el archivo <code className="text-amber-300 bg-slate-900 px-1 py-0.5 rounded">netlify.toml</code> que ya configuramos con:
+                  3. Netlify leerá automáticamente el archivo <code className="text-[#0047BA] bg-blue-50 px-1 py-0.5 rounded font-bold">netlify.toml</code> que ya configuramos con:
                 </p>
-                <ul className="list-disc pl-5 space-y-1 text-slate-400 font-mono text-[11px]">
-                  <li>Build command: <span className="text-white">npm run build</span></li>
-                  <li>Publish directory: <span className="text-white">dist</span></li>
-                  <li>Functions directory: <span className="text-white">netlify/functions</span></li>
-                  <li>Regla de redirección SPA: <span className="text-white">/* /index.html 200</span> (evita error 404)</li>
+                <ul className="list-disc pl-5 space-y-1 text-slate-500 font-mono text-[11px]">
+                  <li>Build command: <span className="text-slate-800 font-bold">npm run build</span></li>
+                  <li>Publish directory: <span className="text-slate-800 font-bold">dist</span></li>
+                  <li>Functions directory: <span className="text-slate-800 font-bold">netlify/functions</span></li>
+                  <li>Regla de redirección SPA: <span className="text-slate-800 font-bold">/* /index.html 200</span> (evita error 404)</li>
                 </ul>
                 <p>
-                  4. Da clic en <strong>"Deploy site"</strong>. En 1 minuto tendrás tu enlace <code className="text-amber-300">https://tu-sitio.netlify.app</code>.
+                  4. Da clic en <strong>"Deploy site"</strong>. En 1 minuto tendrás tu enlace <code className="text-[#0047BA] font-bold">https://tu-sitio.netlify.app</code>.
                 </p>
                 <p>
                   5. Vuelve aquí, pega esa URL en la barra superior de este modal, ¡y los códigos QR funcionarán en cualquier teléfono sin error 404!
@@ -652,10 +652,10 @@ git push -u origin main`}
         )}
 
         {/* Footer */}
-        <div className="pt-2 border-t border-slate-800 flex justify-end">
+        <div className="pt-2 border-t border-slate-200 flex justify-end">
           <button
             onClick={onClose}
-            className="py-2.5 px-5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition-colors"
+            className="py-2.5 px-5 bg-[#0047BA] hover:bg-[#003899] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow"
           >
             Cerrar
           </button>

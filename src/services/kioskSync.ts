@@ -1,4 +1,4 @@
-import { Employee, AssistanceAlert, ResolutionOutcome } from '../types';
+import { Employee, AssistanceAlert, ResolutionOutcome, AssistanceVerificationProof } from '../types';
 import { getGamificationLevel, calculatePointsForAssistance } from './gamification';
 
 export const INITIAL_EMPLOYEES: Employee[] = [
@@ -363,6 +363,7 @@ class StaffSyncService {
       assignedAssociateId: assigned?.id || 'emp-01',
       estimatedArrivalSeconds: 30,
       rejectedBy: [],
+      customerPin: Math.floor(1000 + Math.random() * 9000).toString(),
     };
 
     // Actualizar localmente inmediatamente
@@ -535,8 +536,10 @@ class StaffSyncService {
   public async resolveCall(
     alertId?: string,
     outcome: ResolutionOutcome = 'resuelto_exitoso',
-    resolutionNotes?: string
-  ): Promise<void> {
+    resolutionNotes?: string,
+    verificationProof?: AssistanceVerificationProof,
+    outcomeCategory?: string
+  ): Promise<any> {
     const currentActive = this.state.activeCall;
     const targetId = alertId || currentActive?.id;
     if (targetId) {
@@ -551,6 +554,13 @@ class StaffSyncService {
 
     // Actualizar historial local
     let pointsAwardedInfo: any = null;
+    const hasProof = !!(
+      verificationProof &&
+      (verificationProof.photoUrl ||
+        verificationProof.verifiedPin ||
+        verificationProof.signatureDataUrl ||
+        verificationProof.ticketFolio)
+    );
 
     if (currentActive) {
       const elapsedSeconds = Math.max(0, Math.floor((Date.now() - (currentActive.createdAt || Date.now())) / 1000));
@@ -561,6 +571,7 @@ class StaffSyncService {
         outcome,
         elapsedSeconds,
         currentStreak: emp.streak || 0,
+        hasProofBonus: hasProof,
       });
       pointsAwardedInfo = pointsCalc;
 
@@ -569,6 +580,8 @@ class StaffSyncService {
         existing.status = 'resolved';
         existing.resolvedAt = timeStr;
         existing.outcome = outcome;
+        existing.outcomeCategory = outcomeCategory;
+        existing.verificationProof = verificationProof;
         existing.resolutionNotes = resolutionNotes || (outcome === 'resuelto_exitoso' ? 'Resuelto exitosamente en piso' : 'No se pudo resolver en piso');
       } else {
         this.state.history.unshift({
@@ -576,6 +589,8 @@ class StaffSyncService {
           status: 'resolved',
           resolvedAt: timeStr,
           outcome,
+          outcomeCategory,
+          verificationProof,
           resolutionNotes: resolutionNotes || (outcome === 'resuelto_exitoso' ? 'Resuelto exitosamente en piso' : 'No se pudo resolver en piso'),
         });
       }
@@ -603,6 +618,8 @@ class StaffSyncService {
         match.status = 'resolved';
         match.resolvedAt = timeStr;
         match.outcome = outcome;
+        match.outcomeCategory = outcomeCategory;
+        match.verificationProof = verificationProof;
         match.resolutionNotes = resolutionNotes || (outcome === 'resuelto_exitoso' ? 'Resuelto exitosamente en piso' : 'No se pudo resolver en piso');
       }
     }
@@ -619,13 +636,17 @@ class StaffSyncService {
         body: JSON.stringify({
           alertId: targetId,
           outcome,
+          outcomeCategory,
           resolutionNotes,
+          verificationProof,
           pointsAwarded: pointsAwardedInfo?.totalPoints || 100,
         }),
       }).catch(() => {});
     } catch {
       // ignore
     }
+
+    return pointsAwardedInfo;
   }
 
   // Otorgar bono de puntos manual por parte del Administrador / Supervisor

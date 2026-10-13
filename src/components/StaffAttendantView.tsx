@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Employee, AssistanceAlert, ResolutionOutcome } from '../types';
+import { Employee, AssistanceAlert, ResolutionOutcome, AssistanceVerificationProof } from '../types';
 import { staffSync, INITIAL_EMPLOYEES } from '../services/kioskSync';
 import { soundEffects } from '../services/soundEffects';
 import { voice } from '../services/voice';
@@ -26,12 +26,14 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
   const [selectedMyId, setSelectedMyId] = useState<string>('emp-01'); // Mariana Gómez por defecto
   const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(false);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [hasArrivedAtAisle, setHasArrivedAtAisle] = useState<boolean>(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState<boolean>(false);
   const [isOutcomeModalOpen, setIsOutcomeModalOpen] = useState<boolean>(false);
+  const [modalInitialOutcome, setModalInitialOutcome] = useState<ResolutionOutcome>('resuelto_exitoso');
+  const [modalStartCamera, setModalStartCamera] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>('Atendiendo a otro cliente en este momento');
   const [justRejectedNotice, setJustRejectedNotice] = useState<boolean>(false);
   const [advisorTab, setAdvisorTab] = useState<'dispatch' | 'road'>('dispatch');
-  const [isRoadModalOpen, setIsRoadModalOpen] = useState<boolean>(false);
   const [celebrationData, setCelebrationData] = useState<{
     isOpen: boolean;
     points: number;
@@ -64,10 +66,10 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     };
   }, []);
 
-  const myEmployee = employees.find((e) => e.id === selectedMyId) || employees[0] || INITIAL_EMPLOYEES[0];
+  const myEmployee =
+    employees.find((e) => e.id === selectedMyId) || employees[0] || INITIAL_EMPLOYEES[0];
 
   // Evaluar si la llamada activa aplica a este asesor:
-  // Es relevante si está sin asignar, asignada a él, o si no la ha rechazado ya
   const isAssignedToMe = activeCall?.assignedAssociateId === myEmployee?.id;
   const haveIRejected = activeCall?.rejectedBy?.includes(myEmployee?.id || '');
   const isRelevantCall = activeCall && !haveIRejected;
@@ -77,17 +79,19 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     if (activeCall && activeCall.status === 'calling' && !haveIRejected) {
       if (prevCallIdRef.current !== activeCall.id) {
         prevCallIdRef.current = activeCall.id;
+        setHasArrivedAtAisle(false);
         if (isAudioEnabled) {
           soundEffects.playEmergencyAlert();
-          voice.speak(`¡Atención ${myEmployee?.name.split(' ')[0]}! Solicitud de asistencia en ${activeCall.aisle}.`);
+          voice.speak(`¡Atención ${myEmployee?.name.split(' ')[0]}! Solicitud en ${activeCall.aisle}.`);
           soundEffects.showBrowserNotification(
-            '🚨 Asistencia Solicitada en Pasillo',
+            '🚨 Asistencia Coppel en Pasillo',
             `${activeCall.reason} en ${activeCall.aisle}`
           );
         }
       }
     } else if (!activeCall) {
       prevCallIdRef.current = null;
+      setHasArrivedAtAisle(false);
     }
   }, [activeCall, isAudioEnabled, haveIRejected, myEmployee]);
 
@@ -114,7 +118,7 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     soundEffects.playEmergencyAlert();
     await soundEffects.requestNotificationPermission();
     setIsAudioEnabled(true);
-    voice.speak('Sirena y notificaciones de asesor activadas.');
+    voice.speak('Sirena y notificaciones de asesor Coppel activadas.');
   };
 
   // 1. ACCIÓN: ACEPTAR Y VOY EN CAMINO
@@ -132,20 +136,41 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     await staffSync.rejectCall(activeCall.id, myEmployee.id, rejectReason);
     setIsRejectModalOpen(false);
     setJustRejectedNotice(true);
-    voice.speak('Llamada rechazada. Notificando al supervisor para reasignación.');
+    voice.speak('Llamada rechazada. Notificando al supervisor.');
     setTimeout(() => setJustRejectedNotice(false), 5000);
   };
 
-  // 3. ACCIÓN: CONFIRMAR RESULTADO DE LA INSPECCIÓN (SÍ SE PUDO RESOLVER / NO SE PUDO RESOLVER)
-  const handleConfirmOutcome = async (outcome: ResolutionOutcome, notes: string) => {
+  // 3. ABRIR MODAL CON OUTCOME ESPECÍFICO
+  const handleOpenOutcomeModal = (outcome: ResolutionOutcome, startCamera: boolean = false) => {
+    setModalInitialOutcome(outcome);
+    setModalStartCamera(startCamera);
+    setIsOutcomeModalOpen(true);
+    soundEffects.playSuccessChime();
+  };
+
+  // 4. ACCIÓN: CONFIRMAR RESULTADO DE LA ATENCIÓN
+  const handleConfirmOutcome = async (
+    outcome: ResolutionOutcome,
+    notes: string,
+    verificationProof?: AssistanceVerificationProof,
+    outcomeCategory?: string
+  ) => {
     if (!activeCall) return;
     const alertId = activeCall.id;
+    const hasProof = !!(
+      verificationProof &&
+      (verificationProof.photoUrl ||
+        verificationProof.verifiedPin ||
+        verificationProof.signatureDataUrl ||
+        verificationProof.ticketFolio)
+    );
 
     // Calcular puntos ganados y bonos
     const pointsCalc = calculatePointsForAssistance({
       outcome,
       elapsedSeconds,
       currentStreak: myEmployee?.streak || 0,
+      hasProofBonus: hasProof,
     });
 
     if (outcome === 'resuelto_exitoso') {
@@ -153,7 +178,7 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
       voice.speak(`¡Excelente trabajo ${myEmployee?.name.split(' ')[0]}! Has ganado ${pointsCalc.totalPoints} puntos.`);
     } else {
       soundEffects.playSuccessChime();
-      voice.speak('Atención registrada como no resuelta. Supervisor notificado.');
+      voice.speak('Atención registrada. Supervisor notificado.');
     }
 
     setCelebrationData({
@@ -163,7 +188,7 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
       breakdown: pointsCalc.reasons,
     });
 
-    await staffSync.resolveCall(alertId, outcome, notes);
+    await staffSync.resolveCall(alertId, outcome, notes, verificationProof, outcomeCategory);
     setIsOutcomeModalOpen(false);
   };
 
@@ -173,22 +198,32 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     await staffSync.updateEmployeeStatus(myEmployee.id, status);
   };
 
+  // Simular llamada de prueba en 1 clic
+  const handleSimulateTestCall = async () => {
+    soundEffects.playSuccessChime();
+    await staffSync.triggerCall({
+      aisle: 'Pasillo 2 - Celulares & Electrónica',
+      department: 'Telefonía Coppel',
+      reason: 'Cliente solicita información sobre financiamiento de Celular Samsung',
+      preferredEmployeeId: myEmployee.id,
+    });
+  };
+
   return (
-    <div className="w-full max-w-xl md:max-w-2xl mx-auto min-h-screen bg-slate-900 border-none sm:border-x sm:border-slate-800 shadow-2xl flex flex-col justify-start text-slate-100 select-none relative sm:rounded-3xl overflow-hidden pb-12">
-      {/* 1. BARRA SUPERIOR DE ESTADO DEL ASESOR */}
-      <div className="bg-[#001F4D] px-3 sm:px-4 py-2.5 border-b border-blue-900/60 flex items-center justify-between text-xs">
+    <div className="w-full max-w-xl md:max-w-2xl mx-auto min-h-screen bg-[#F4F6F9] text-slate-800 shadow-2xl flex flex-col justify-start select-none relative sm:rounded-3xl overflow-hidden pb-12 border border-slate-200">
+      {/* 1. BARRA SUPERIOR DE LA APP COPPEL ASESOR */}
+      <div className="bg-[#0047BA] px-3.5 sm:px-4 py-2 text-white flex items-center justify-between text-xs border-b border-blue-600/40">
         <div className="flex items-center space-x-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span className="font-extrabold uppercase tracking-wider text-white text-[11px] sm:text-xs">
-            Coppel Staff · Asesor en Piso
+          <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+          <span className="font-black text-[11px] sm:text-xs text-white uppercase tracking-wider">
+            Terminal Asesor Coppel · Piso de Venta
           </span>
         </div>
 
-        <div className="flex items-center space-x-2">
-          {/* Botón QR / Compartir */}
+        <div className="flex items-center space-x-2 shrink-0">
           <button
             onClick={() => onOpenShareModal?.('staff')}
-            className="bg-slate-800/90 hover:bg-slate-750 text-amber-300 font-bold px-2 py-0.5 rounded text-[10px] border border-slate-700 flex items-center space-x-1 transition-colors"
+            className="bg-white/15 hover:bg-white/25 text-[#FFD100] font-black px-2 py-0.5 rounded text-[10px] border border-white/20 flex items-center space-x-1 cursor-pointer transition-colors"
             title="Compartir link o código QR para otros celulares"
           >
             <i className="fa-solid fa-qrcode"></i>
@@ -198,57 +233,61 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
           {!isAudioEnabled ? (
             <button
               onClick={handleEnableAudio}
-              className="bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded text-[10px] animate-pulse"
+              className="bg-[#FFD100] text-[#0047BA] font-black px-2 py-0.5 rounded text-[10px] animate-pulse cursor-pointer shadow"
             >
               <i className="fa-solid fa-bell mr-1"></i>
               Activar Audio
             </button>
           ) : (
-            <span className="text-emerald-400 font-mono text-[10px] flex items-center gap-1">
+            <span className="text-emerald-300 font-mono text-[10px] flex items-center gap-1 font-black bg-white/10 px-2 py-0.5 rounded">
               <i className="fa-solid fa-volume-high"></i>
-              Audio ON
+              ON
             </span>
           )}
         </div>
       </div>
 
-      {/* 2. PERFIL DEL ASESOR ACTUAL & SELECTOR RÁPIDO */}
-      <div className="bg-slate-950 p-4 border-b border-slate-800 flex items-center justify-between gap-3">
+      {/* 2. ENCABEZADO PRINCIPAL AZUL COPPEL (#0047BA) CON LOGO OFICIAL */}
+      <div className="bg-[#0047BA] px-4 py-3 text-white shadow-md flex items-center justify-between gap-3 border-b-2 border-[#FFD100]">
         <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-amber-400 text-[#002B66] font-black text-lg flex items-center justify-center shrink-0 shadow">
+          {/* Logo 3 puntos amarillos Coppel */}
+          <div className="w-12 h-12 rounded-2xl bg-[#FFD100] text-[#0047BA] font-black text-lg flex items-center justify-center shrink-0 shadow-lg border-2 border-white/20">
             {myEmployee?.initials || 'MG'}
           </div>
+
           <div className="min-w-0">
             <div className="flex items-center space-x-2">
-              <h2 className="font-extrabold text-sm text-white truncate">{myEmployee?.name}</h2>
+              <h2 className="font-black text-sm sm:text-base text-white truncate tracking-tight">
+                {myEmployee?.name}
+              </h2>
               <span
-                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                className={`text-[9px] font-black uppercase px-2 py-0.2 rounded-full border ${
                   myEmployee?.status === 'disponible'
-                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                    ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400'
                     : myEmployee?.status === 'en_piso'
-                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                    ? 'bg-[#FFD100] text-[#0047BA] border-[#FFD100]'
                     : myEmployee?.status === 'ocupado'
-                    ? 'bg-red-950 text-red-300 border border-red-800'
-                    : 'bg-slate-800 text-slate-400'
+                    ? 'bg-red-500/20 text-red-200 border-red-400'
+                    : 'bg-white/20 text-white border-white/40'
                 }`}
               >
                 {myEmployee?.status}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 truncate">{myEmployee?.role}</p>
-            <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-              📍 {myEmployee?.currentAisle} · ★ {myEmployee?.rating}
+            <p className="text-[11px] text-blue-100 truncate font-medium">{myEmployee?.role}</p>
+            <p className="text-[10px] text-yellow-300 font-mono mt-0.5">
+              📍 {myEmployee?.currentAisle} · ★ {myEmployee?.rating} · {myEmployee?.levelTitle}
             </p>
           </div>
         </div>
 
-        {/* Selector de qué asesor soy */}
-        <div className="shrink-0">
-          <label className="text-[9px] text-slate-500 block text-right mb-0.5 font-bold">Cambiar Asesor:</label>
+        {/* Selector de Asesor */}
+        <div className="shrink-0 text-right">
+          <label className="text-[9px] text-blue-200 block mb-0.5 font-bold uppercase">Asesor:</label>
           <select
             value={selectedMyId}
             onChange={(e) => setSelectedMyId(e.target.value)}
-            className="bg-slate-800 text-[11px] text-amber-300 border border-slate-700 rounded-xl px-2 py-1 outline-none font-bold cursor-pointer"
+            className="bg-white text-[11px] text-[#0047BA] border-2 border-[#FFD100] rounded-xl px-2 py-1 outline-none font-black shadow-sm cursor-pointer"
           >
             {employees.map((emp) => (
               <option key={emp.id} value={emp.id}>
@@ -260,45 +299,45 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
       </div>
 
       {/* 3. SELECTOR DE MI DISPONIBILIDAD PERSONAL */}
-      <div className="bg-slate-950/60 px-4 py-2 border-b border-slate-800/80 flex items-center justify-between text-[11px]">
-        <span className="text-slate-400 font-medium">Mi Estatus en Piso:</span>
-        <div className="flex items-center space-x-1">
+      <div className="bg-white px-4 py-2.5 border-b border-slate-200 flex items-center justify-between text-[11px] shadow-sm">
+        <span className="text-slate-600 font-black">Mi Estatus en Piso:</span>
+        <div className="flex items-center space-x-1.5">
           <button
             onClick={() => handleSetMyStatus('disponible')}
-            className={`px-2 py-1 rounded-lg font-bold text-[10px] transition-colors ${
+            className={`px-2.5 py-1 rounded-xl font-black text-[10px] transition-all cursor-pointer ${
               myEmployee?.status === 'disponible'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            Disponible
+            ✓ Disponible
           </button>
           <button
             onClick={() => handleSetMyStatus('en_piso')}
-            className={`px-2 py-1 rounded-lg font-bold text-[10px] transition-colors ${
+            className={`px-2.5 py-1 rounded-xl font-black text-[10px] transition-all cursor-pointer ${
               myEmployee?.status === 'en_piso'
-                ? 'bg-amber-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white'
+                ? 'bg-[#FFD100] text-[#0047BA] shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             En Piso
           </button>
           <button
             onClick={() => handleSetMyStatus('ocupado')}
-            className={`px-2 py-1 rounded-lg font-bold text-[10px] transition-colors ${
+            className={`px-2.5 py-1 rounded-xl font-black text-[10px] transition-all cursor-pointer ${
               myEmployee?.status === 'ocupado'
-                ? 'bg-red-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white'
+                ? 'bg-red-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             Ocupado
           </button>
           <button
             onClick={() => handleSetMyStatus('descanso')}
-            className={`px-2 py-1 rounded-lg font-bold text-[10px] transition-colors ${
+            className={`px-2.5 py-1 rounded-xl font-black text-[10px] transition-all cursor-pointer ${
               myEmployee?.status === 'descanso'
-                ? 'bg-slate-700 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white'
+                ? 'bg-slate-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             Descanso
@@ -306,273 +345,383 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
         </div>
       </div>
 
-      {/* 3.1 PESTAÑAS DE VISTA: ATENCIÓN EN PISO VS CAMINO DE AVANCE ANIMADO */}
-      <div className="bg-slate-950 px-4 pt-2.5 pb-2 border-b border-slate-800 flex items-center justify-between gap-2">
-        <div className="flex items-center space-x-1.5 w-full">
+      {/* 3.1 PESTAÑAS: ATENCIÓN EN PISO VS CAMINO DE PUNTOS */}
+      <div className="bg-[#EBF1FA] px-4 pt-2 pb-2 border-b border-slate-200 flex items-center justify-between gap-2">
+        <div className="flex items-center space-x-2 w-full">
           <button
             onClick={() => setAdvisorTab('dispatch')}
-            className={`flex-1 py-2 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+            className={`flex-1 py-2 px-3 rounded-2xl font-black text-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm ${
               advisorTab === 'dispatch'
-                ? 'bg-gradient-to-r from-blue-700 to-indigo-700 text-white shadow-lg ring-2 ring-blue-500/30'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                ? 'bg-[#0047BA] text-white shadow-md'
+                : 'bg-white text-slate-600 hover:text-[#0047BA] border border-slate-200'
             }`}
           >
             <i className="fa-solid fa-headset"></i>
             <span>Atención en Piso</span>
             {isRelevantCall && (
-              <span className="w-2 h-2 rounded-full bg-red-400 animate-ping ml-1"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping ml-1"></span>
             )}
           </button>
 
           <button
             onClick={() => setAdvisorTab('road')}
-            className={`flex-1 py-2 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+            className={`flex-1 py-2 px-3 rounded-2xl font-black text-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm ${
               advisorTab === 'road'
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-lg ring-2 ring-amber-400/30 font-black'
-                : 'bg-slate-900 text-amber-300 hover:text-white border border-slate-800'
+                ? 'bg-[#FFD100] text-[#0047BA] shadow-md border-2 border-amber-400'
+                : 'bg-white text-slate-700 hover:text-amber-600 border border-slate-200'
             }`}
           >
-            <i className="fa-solid fa-trophy"></i>
+            <i className="fa-solid fa-trophy text-amber-500"></i>
             <span>Camino de Puntos</span>
-            <span className="bg-amber-400/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">
+            <span className="bg-[#0047BA] text-white text-[10px] px-1.5 py-0.5 rounded-full font-mono font-black">
               {myEmployee?.points || 0} pts
             </span>
           </button>
         </div>
       </div>
 
-      {/* 4. ÁREA CENTRAL: SOLICITUD ENTRANTE O CAMINO DE AVANCE */}
+      {/* 4. CONTENIDO PRINCIPAL: SOLICITUD ENTRANTE O CAMINO DE AVANCE */}
       <div className="flex-1 p-4 space-y-4 overflow-y-auto screen-scroll">
         {advisorTab === 'road' ? (
-          /* VISTA COMPLETA: CAMINO DE AVANCE ANIMADO CON HITOS */
+          /* VISTA COMPLETA DEL CAMINO ANIMADO */
           <div className="space-y-4 animate-in fade-in duration-200">
-            <AdvisorGamificationRoad employee={myEmployee} compact={false} />
+            {myEmployee && <AdvisorGamificationRoad employee={myEmployee} compact={false} />}
             <button
               onClick={() => setAdvisorTab('dispatch')}
-              className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold rounded-2xl text-xs border border-slate-700 flex items-center justify-center space-x-2 transition-colors cursor-pointer"
+              className="w-full py-3 bg-[#0047BA] hover:bg-[#003899] text-white font-black rounded-2xl text-xs flex items-center justify-center space-x-2 transition-colors cursor-pointer shadow-md"
             >
               <i className="fa-solid fa-arrow-left"></i>
               <span>Regresar a Atención en Piso</span>
             </button>
           </div>
         ) : (
-          /* VISTA OPERATIVA DE DESPACHO EN PISO */
+          /* VISTA DE ATENCIÓN OPERATIVA EN PISO */
           <>
-            {/* Tarjeta compacta del progreso de puntos del asesor */}
-            <AdvisorGamificationRoad
-              employee={myEmployee}
-              compact={true}
-              onOpenRoadDetails={() => setAdvisorTab('road')}
-            />
-        {/* Aviso de llamada rechazada recientemente */}
-        {justRejectedNotice && (
-          <div className="bg-amber-950/90 border border-amber-600 text-amber-200 p-3 rounded-2xl text-xs space-y-1 animate-in fade-in">
-            <p className="font-bold flex items-center gap-1.5">
-              <i className="fa-solid fa-circle-check text-amber-400"></i>
-              <span>Llamada rechazada correctamente</span>
-            </p>
-            <p className="text-[11px] text-amber-300/90">
-              Tu estado cambió a <strong>Ocupado</strong> y el supervisor fue notificado para asignarla a otro compañero.
-            </p>
-          </div>
-        )}
+            {/* Tarjeta compacta del progreso de puntos */}
+            {myEmployee && (
+              <AdvisorGamificationRoad
+                employee={myEmployee}
+                compact={true}
+                onOpenRoadDetails={() => setAdvisorTab('road')}
+              />
+            )}
 
-        {/* CASO A: HAY UNA ALERTA ENTRANTE DISPONIBLE PARA ATENDER */}
-        {isRelevantCall ? (
-          <div className={`rounded-3xl p-5 shadow-2xl border-2 space-y-4 animate-in zoom-in-95 duration-200 ${
-            activeCall.status === 'calling'
-              ? 'bg-gradient-to-b from-red-950 via-slate-900 to-slate-900 border-red-500 ring-4 ring-red-500/25'
-              : 'bg-gradient-to-b from-blue-950 via-slate-900 to-slate-900 border-blue-500'
-          }`}>
-            {/* Header de la alerta */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center space-x-2">
-                <span className={`w-3 h-3 rounded-full ${activeCall.status === 'calling' ? 'bg-red-500 animate-ping' : 'bg-blue-400 animate-pulse'}`}></span>
-                <span className="font-black text-xs uppercase tracking-wider text-white">
-                  {activeCall.status === 'calling' ? '🚨 Solicitud de Cliente' : '🏃‍♂️ Atendiendo en Camino'}
-                </span>
-              </div>
-              <span className="text-[11px] font-mono text-amber-300 bg-black/50 px-2.5 py-0.5 rounded-full border border-amber-400/30 font-bold">
-                ⏱ {elapsedSeconds}s transcurridos
-              </span>
-            </div>
-
-            {/* Ubicación y Motivo */}
-            <div className="space-y-2.5">
-              <div className="bg-black/50 p-3.5 rounded-2xl border border-white/5 space-y-0.5">
-                <span className="text-[10px] text-slate-400 uppercase font-black block">
-                  Ubicación del Cliente:
-                </span>
-                <p className="text-sm font-black text-white flex items-center gap-2">
-                  <i className="fa-solid fa-location-dot text-amber-400 text-base"></i>
-                  <span>{activeCall.aisle}</span>
+            {/* Aviso de llamada rechazada recientemente */}
+            {justRejectedNotice && (
+              <div className="bg-amber-50 border-2 border-amber-400 text-amber-900 p-3.5 rounded-2xl text-xs space-y-1 animate-in fade-in shadow-sm">
+                <p className="font-black flex items-center gap-1.5">
+                  <i className="fa-solid fa-circle-check text-amber-600 text-sm"></i>
+                  <span>Llamada rechazada correctamente</span>
                 </p>
-                <p className="text-[11px] text-blue-300">
-                  Departamento: <strong>{activeCall.storeDepartment}</strong>
+                <p className="text-[11px] text-amber-800">
+                  Tu estado cambió a <strong>Ocupado</strong> y el supervisor fue notificado para reasignar a otro asesor.
                 </p>
               </div>
+            )}
 
-              <div className="bg-black/50 p-3.5 rounded-2xl border border-white/5 space-y-0.5">
-                <span className="text-[10px] text-slate-400 uppercase font-black block">
-                  Motivo de la Consulta:
-                </span>
-                <p className="text-xs font-extrabold text-amber-300">
-                  "{activeCall.reason}"
-                </p>
-              </div>
-
-              {activeCall.dispatchedByAdmin && (
-                <div className="bg-blue-950/80 p-2.5 rounded-xl border border-blue-800 text-[11px] text-blue-200 flex items-center space-x-2">
-                  <i className="fa-solid fa-headset text-amber-400"></i>
-                  <span>Asignada por el <strong>Supervisor de Tienda</strong></span>
-                </div>
-              )}
-            </div>
-
-            {/* BOTONES DE DECISIÓN DEL PERSONAL (EXCLUSIVAMENTE ACEPTAR O RECHAZAR) */}
-            <div className="pt-2 border-t border-white/10 space-y-2.5">
-              {activeCall.status === 'calling' ? (
-                <>
-                  {/* OPCIÓN 1: ACEPTAR Y VOY EN CAMINO */}
-                  <button
-                    onClick={handleAcceptCall}
-                    className="w-full py-4 px-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black rounded-2xl text-sm shadow-xl flex items-center justify-center space-x-2 active:scale-95 transition-all"
-                  >
-                    <i className="fa-solid fa-person-running text-lg"></i>
-                    <span>Aceptar y Voy en Camino</span>
-                  </button>
-
-                  {/* OPCIÓN 2: RECHAZAR (PORQUE ESTOY CON OTRO CASO) */}
-                  <button
-                    onClick={() => setIsRejectModalOpen(true)}
-                    className="w-full py-3 px-4 bg-red-950/80 hover:bg-red-900 text-red-200 font-extrabold rounded-2xl text-xs border border-red-800 flex items-center justify-center space-x-2 active:scale-95 transition-all"
-                  >
-                    <i className="fa-solid fa-xmark text-sm"></i>
-                    <span>Rechazar (Estoy con otro cliente)</span>
-                  </button>
-                </>
-              ) : (
-                /* CUANDO YA ESTÁ ACEPTADA Y EN ATENCIÓN EN PISO */
-                <div className="space-y-3 pt-1">
-                  <div className="bg-emerald-950/70 border border-emerald-600/80 p-3 rounded-2xl flex items-center space-x-2 text-xs text-emerald-200 font-bold">
-                    <i className="fa-solid fa-person-circle-check text-emerald-400 text-base"></i>
-                    <span>En atención: Inspecciona la solicitud con el cliente</span>
-                  </div>
-
-                  {/* PREGUNTA DE RESULTADO CON BOTONES RÁPIDOS */}
-                  <div className="bg-slate-950/90 p-4 rounded-2xl border border-slate-800 space-y-2.5">
-                    <span className="text-xs font-black text-center text-slate-200 uppercase tracking-wider block">
-                      ¿Se pudo resolver la solicitud del cliente?
+            {/* CASO A: HAY UNA ALERTA ENTRANTE DISPONIBLE */}
+            {isRelevantCall ? (
+              <div
+                className={`rounded-3xl p-5 shadow-xl border-2 space-y-4 animate-in zoom-in-95 duration-200 ${
+                  activeCall.status === 'calling'
+                    ? 'bg-gradient-to-b from-red-50 via-white to-white border-red-500 ring-4 ring-red-500/15'
+                    : 'bg-gradient-to-b from-blue-50 via-white to-white border-[#0047BA] ring-4 ring-blue-500/15'
+                }`}
+              >
+                {/* Header de la Alerta */}
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                  <div className="flex items-center space-x-2">
+                    <span
+                      className={`w-3.5 h-3.5 rounded-full ${
+                        activeCall.status === 'calling' ? 'bg-red-500 animate-ping' : 'bg-[#0047BA] animate-pulse'
+                      }`}
+                    ></span>
+                    <span className="font-black text-xs uppercase tracking-wider text-slate-900">
+                      {activeCall.status === 'calling'
+                        ? '🚨 Solicitud Entrante en Piso'
+                        : '🏃‍♂️ Atención Aceptada · En Camino'}
                     </span>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {/* BOTÓN 1: SÍ SE PUDO RESOLVER */}
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmOutcome('resuelto_exitoso', '🛒 Venta concretada / Duda resuelta con éxito')}
-                        className="p-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl flex flex-col items-center justify-center space-y-1 active:scale-95 transition-all cursor-pointer relative overflow-hidden ring-2 ring-emerald-400/40"
-                      >
-                        <span className="absolute top-1.5 right-1.5 bg-amber-300 text-slate-950 text-[9px] font-black px-1.5 py-0.2 rounded-full shadow">
-                          +100 a +150 PTS
-                        </span>
-                        <i className="fa-solid fa-circle-check text-xl"></i>
-                        <span>Sí se resolvió</span>
-                        <span className="text-[10px] text-emerald-950 font-black">Ganar Puntos 🏆</span>
-                      </button>
-
-                      {/* BOTÓN 2: NO SE PUDO RESOLVER */}
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmOutcome('no_resuelto', '🚫 Sin inventario / No resuelto en piso')}
-                        className="p-3.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl flex flex-col items-center justify-center space-y-1 active:scale-95 transition-all cursor-pointer"
-                      >
-                        <i className="fa-solid fa-circle-xmark text-xl"></i>
-                        <span>No se resolvió</span>
-                        <span className="text-[10px] text-red-200 font-bold">Seguimiento</span>
-                      </button>
-                    </div>
-
-                    {/* BOTÓN 3: ABRIR INSPECCIÓN DETALLADA */}
-                    <button
-                      type="button"
-                      onClick={() => setIsOutcomeModalOpen(true)}
-                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-amber-300 font-bold rounded-xl text-xs border border-slate-700 flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
-                    >
-                      <i className="fa-solid fa-clipboard-check"></i>
-                      <span>Inspección Detallada (Elegir motivo y notas)</span>
-                    </button>
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          /* CASO B: SIN LLAMADAS ACTIVAS O YA RECHAZADA */
-          <div className="bg-slate-950/80 border border-slate-800 rounded-3xl p-6 text-center space-y-3">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-950/60 text-emerald-400 border border-emerald-800/80 flex items-center justify-center text-3xl mx-auto shadow-inner">
-              <i className="fa-solid fa-clipboard-check"></i>
-            </div>
-            <div>
-              <h3 className="font-extrabold text-sm text-white">Modo Disponible en Piso</h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Tu dispositivo está conectado. Cuando un cliente o el supervisor te asigne una llamada, sonará una alarma y podrás <strong>Aceptar</strong> o <strong>Rechazar</strong>.
-              </p>
-            </div>
-
-            {/* Resumen del desempeño personal hoy */}
-            <div className="pt-2 grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-center">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Atendidos Hoy</span>
-                <span className="text-xl font-black text-amber-400">{myEmployee?.totalHelpedToday || 14}</span>
-              </div>
-              <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-center">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Tu Calificación</span>
-                <span className="text-xl font-black text-emerald-400">★ {myEmployee?.rating || 4.9}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Historial de mis atenciones recientes */}
-        <div className="space-y-2 pt-2">
-          <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
-            Mis Atenciones de Hoy
-          </h4>
-          <div className="space-y-1.5">
-            {alertsHistory
-              .filter((a) => a.assignedAssociateId === myEmployee?.id || a.status === 'resolved')
-              .slice(0, 4)
-              .map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs flex items-center justify-between"
-                >
-                  <div className="min-w-0 flex-1 pr-2">
-                    <span className="font-extrabold text-white text-[11px] block truncate">{item.aisle}</span>
-                    <span className="text-[10px] text-slate-400 block truncate">{item.reason}</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-800 shrink-0">
-                    ✓ Resuelto
+                  <span className="text-[11px] font-mono text-[#0047BA] bg-blue-100/80 px-2.5 py-0.5 rounded-full border border-blue-300 font-black">
+                    ⏱ {elapsedSeconds}s transcurridos
                   </span>
                 </div>
-              ))}
-          </div>
-        </div>
+
+                {/* Ubicación y Motivo */}
+                <div className="space-y-2.5">
+                  <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-black block tracking-wider">
+                      Ubicación del Cliente:
+                    </span>
+                    <p className="text-base font-black text-[#0047BA] flex items-center gap-2">
+                      <i className="fa-solid fa-location-dot text-red-500 text-lg"></i>
+                      <span>{activeCall.aisle}</span>
+                    </p>
+                    <p className="text-xs text-[#0047BA] font-bold">
+                      Departamento: <strong>{activeCall.storeDepartment}</strong>
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-black block tracking-wider">
+                      Motivo de la Solicitud:
+                    </span>
+                    <p className="text-xs sm:text-sm font-black text-slate-800">
+                      "{activeCall.reason}"
+                    </p>
+                  </div>
+
+                  {/* PIN del cliente para verificación rápida */}
+                  {activeCall.customerPin && (
+                    <div className="bg-amber-50 border-2 border-amber-300 p-2.5 rounded-2xl flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-6 h-6 rounded-lg bg-[#FFD100] text-[#0047BA] flex items-center justify-center font-black text-xs">
+                          <i className="fa-solid fa-key"></i>
+                        </span>
+                        <div>
+                          <span className="font-bold text-amber-950 block">PIN de Verificación del Cliente:</span>
+                          <span className="text-[10px] text-amber-800">Pídelo al llegar al pasillo</span>
+                        </div>
+                      </div>
+                      <span className="font-mono font-black text-base text-[#0047BA] bg-white px-2.5 py-0.5 rounded-xl border border-amber-300">
+                        {activeCall.customerPin}
+                      </span>
+                    </div>
+                  )}
+
+                  {activeCall.dispatchedByAdmin && (
+                    <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-200 text-[11px] text-[#0047BA] flex items-center space-x-2 font-bold">
+                      <i className="fa-solid fa-headset text-amber-500 text-sm"></i>
+                      <span>Asignada directamente por el <strong>Supervisor de Tienda</strong></span>
+                    </div>
+                  )}
+                </div>
+
+                {/* BOTONES DE DECISIÓN DEL ASESOR */}
+                <div className="pt-2 border-t border-slate-200 space-y-2.5">
+                  {activeCall.status === 'calling' ? (
+                    <>
+                      {/* BOTÓN 1: ACEPTAR Y VOY EN CAMINO */}
+                      <button
+                        type="button"
+                        onClick={handleAcceptCall}
+                        className="w-full py-4 px-4 bg-[#0047BA] hover:bg-[#003899] text-white font-black rounded-2xl text-sm shadow-xl flex items-center justify-center space-x-2 active:scale-95 transition-all cursor-pointer border-2 border-[#003899] group"
+                      >
+                        <i className="fa-solid fa-person-running text-xl text-[#FFD100] group-hover:scale-110 transition-transform"></i>
+                        <span className="tracking-wide">Aceptar y Voy en Camino</span>
+                      </button>
+
+                      {/* BOTÓN 2: RECHAZAR */}
+                      <button
+                        type="button"
+                        onClick={() => setIsRejectModalOpen(true)}
+                        className="w-full py-3 px-4 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 font-extrabold rounded-2xl text-xs border border-slate-300 flex items-center justify-center space-x-2 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <i className="fa-solid fa-xmark text-sm"></i>
+                        <span>Rechazar (Estoy con otro cliente)</span>
+                      </button>
+                    </>
+                  ) : (
+                    /* CUANDO YA ESTÁ ACEPTADA Y EN ATENCIÓN */
+                    <div className="space-y-3 pt-1">
+                      {/* Estado en camino / presencia */}
+                      <div className="flex items-center justify-between bg-blue-50 border border-blue-200 p-3 rounded-2xl text-xs text-[#0047BA] font-bold">
+                        <div className="flex items-center space-x-2">
+                          <i className="fa-solid fa-person-walking text-base text-amber-500"></i>
+                          <span>{hasArrivedAtAisle ? 'En atención con el cliente en pasillo' : 'En camino al pasillo'}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHasArrivedAtAisle(true);
+                            soundEffects.playSuccessChime();
+                          }}
+                          className={`px-2.5 py-1 rounded-xl text-[10px] font-black cursor-pointer transition-all ${
+                            hasArrivedAtAisle
+                              ? 'bg-emerald-600 text-white shadow'
+                              : 'bg-white text-[#0047BA] border border-blue-300 hover:bg-blue-100'
+                          }`}
+                        >
+                          {hasArrivedAtAisle ? '✓ Llegada Registrada' : 'Marcar: Ya llegué'}
+                        </button>
+                      </div>
+
+                      {/* BOTÓN RÁPIDO: CONECTAR CÁMARA Y TOMAR FOTO DE EVIDENCIA IN SITU */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenOutcomeModal('resuelto_exitoso', true)}
+                        className="w-full py-3 px-4 bg-white hover:bg-amber-50 text-[#0047BA] font-black rounded-2xl text-xs border-2 border-[#FFD100] shadow-sm flex items-center justify-center space-x-2 active:scale-95 transition-all cursor-pointer group"
+                      >
+                        <i className="fa-solid fa-camera text-base text-amber-500 group-hover:scale-110 transition-transform"></i>
+                        <span>📷 Conectar Cámara & Tomar Foto de Evidencia (+25 PTS)</span>
+                      </button>
+
+                      {/* BOTÓN PRINCIPAL DE FINALIZAR & REGISTRAR */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenOutcomeModal('resuelto_exitoso', false)}
+                        className="w-full py-3.5 px-4 bg-[#0047BA] hover:bg-[#003899] text-white font-black rounded-2xl text-sm shadow-xl flex items-center justify-center space-x-2 active:scale-95 transition-all cursor-pointer border-2 border-[#003899]"
+                      >
+                        <i className="fa-solid fa-clipboard-check text-lg text-[#FFD100]"></i>
+                        <span>Finalizar Atención & Registrar Resultado</span>
+                      </button>
+
+                      {/* BOTONES DIRECTOS 1-CLIC */}
+                      <div className="grid grid-cols-2 gap-2.5 pt-1">
+                        {/* 1-CLIC: SÍ SE RESOLVIÓ */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenOutcomeModal('resuelto_exitoso', false)}
+                          className="p-3 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 text-white font-black rounded-2xl text-xs shadow-md flex flex-col items-center justify-center space-y-1 active:scale-95 transition-all cursor-pointer relative overflow-hidden"
+                        >
+                          <span className="absolute top-1 right-1 bg-[#FFD100] text-[#0047BA] text-[8px] font-black px-1.5 py-0.2 rounded-full">
+                            +100 a +125 PTS
+                          </span>
+                          <i className="fa-solid fa-circle-check text-lg text-[#FFD100]"></i>
+                          <span>✓ Sí se resolvió</span>
+                          <span className="text-[10px] text-emerald-100 font-bold">Elegir motivo & foto</span>
+                        </button>
+
+                        {/* 1-CLIC: NO SE RESOLVIÓ */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenOutcomeModal('no_resuelto', false)}
+                          className="p-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 text-white font-black rounded-2xl text-xs shadow-md flex flex-col items-center justify-center space-y-1 active:scale-95 transition-all cursor-pointer"
+                        >
+                          <i className="fa-solid fa-circle-xmark text-lg text-white"></i>
+                          <span>✕ No se resolvió</span>
+                          <span className="text-[10px] text-red-100 font-bold">Indicar por qué</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* CASO B: EN ESPERA / MODO DISPONIBLE EN PISO */
+              <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 text-center space-y-4 shadow-sm">
+                <div className="w-16 h-16 rounded-3xl bg-blue-50 text-[#0047BA] border-2 border-blue-200 flex items-center justify-center text-3xl mx-auto shadow-sm">
+                  <i className="fa-solid fa-headset"></i>
+                </div>
+
+                <div>
+                  <h3 className="font-black text-base text-[#0047BA]">
+                    Terminal Coppel · Disponible en Piso
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                    Tu dispositivo está enlazado a la sucursal. En cuanto un cliente solicite apoyo desde un Tótem o pasillo, sonará la alarma sonora con su ubicación.
+                  </p>
+                </div>
+
+                {/* Botón rápido para simular llamada de prueba */}
+                <button
+                  type="button"
+                  onClick={handleSimulateTestCall}
+                  className="py-2.5 px-4 bg-[#FFD100] hover:bg-[#ffc700] text-[#0047BA] font-black rounded-2xl text-xs shadow-sm flex items-center justify-center space-x-2 mx-auto active:scale-95 transition-all cursor-pointer"
+                >
+                  <i className="fa-solid fa-bolt"></i>
+                  <span>Simular Llamada de Prueba en Piso</span>
+                </button>
+
+                {/* Resumen del desempeño personal hoy */}
+                <div className="pt-2 grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-[#F8FAFC] p-3 rounded-2xl border border-slate-200 text-center">
+                    <span className="text-[10px] text-slate-400 uppercase font-black block tracking-wider">
+                      Atenciones de Hoy
+                    </span>
+                    <span className="text-2xl font-black text-[#0047BA]">
+                      {myEmployee?.successfulAssistsToday || myEmployee?.totalHelpedToday || 14}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#F8FAFC] p-3 rounded-2xl border border-slate-200 text-center">
+                    <span className="text-[10px] text-slate-400 uppercase font-black block tracking-wider">
+                      Puntos Ganados
+                    </span>
+                    <span className="text-2xl font-black text-amber-500 font-mono">
+                      {myEmployee?.points || 0}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Historial de atenciones recientes con comprobantes */}
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Mis Atenciones de Hoy en Piso
+                </h4>
+                <span className="text-[10px] text-[#0047BA] font-bold">
+                  {alertsHistory.length} registradas
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {alertsHistory
+                  .filter((a) => a.assignedAssociateId === myEmployee?.id || a.status === 'resolved')
+                  .slice(0, 5)
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white border border-slate-200 rounded-2xl p-3 text-xs flex items-center justify-between shadow-sm hover:border-slate-300 transition-all gap-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-black text-slate-900 text-xs truncate">
+                            {item.aisle}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {item.resolvedAt || item.timestamp}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-600 truncate mt-0.5">
+                          {item.outcomeCategory || item.resolutionNotes || item.reason}
+                        </p>
+
+                        {/* Insignia de verificación si tiene */}
+                        {item.verificationProof && (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[9px] bg-blue-50 text-[#0047BA] font-bold px-1.5 py-0.2 rounded border border-blue-200 flex items-center gap-1">
+                              {item.verificationProof.type === 'photo' && <i className="fa-solid fa-camera"></i>}
+                              {item.verificationProof.type === 'customer_pin' && <i className="fa-solid fa-key"></i>}
+                              {item.verificationProof.type === 'signature' && <i className="fa-solid fa-signature"></i>}
+                              {item.verificationProof.type === 'ticket_folio' && <i className="fa-solid fa-receipt"></i>}
+                              <span>Comprobada</span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <span
+                        className={`text-[10px] font-black px-2.5 py-1 rounded-full shrink-0 border ${
+                          item.outcome === 'no_resuelto'
+                            ? 'bg-red-50 text-red-700 border-red-300'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                        }`}
+                      >
+                        {item.outcome === 'no_resuelto' ? '✕ No resuelto' : '✓ Resuelto'}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
           </>
         )}
       </div>
 
       {/* 5. MODAL DE MOTIVO DE RECHAZO */}
       {isRejectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center space-x-2.5 border-b border-slate-800 pb-3">
-              <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center font-black">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white border-2 border-slate-200 w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center space-x-2.5 border-b border-slate-200 pb-3">
+              <div className="w-8 h-8 rounded-xl bg-red-100 text-red-600 flex items-center justify-center font-black">
                 <i className="fa-solid fa-xmark"></i>
               </div>
               <div>
-                <h3 className="font-extrabold text-sm text-white">Rechazar Solicitud</h3>
-                <p className="text-[11px] text-slate-400">Indica el motivo para avisar al supervisor</p>
+                <h3 className="font-black text-sm text-slate-900">Rechazar Solicitud</h3>
+                <p className="text-[11px] text-slate-500">Indica el motivo para reasignar al supervisor</p>
               </div>
             </div>
 
@@ -581,15 +730,16 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                 'Atendiendo a otro cliente en este momento',
                 'Realizando cobro de abono en caja express',
                 'Buscando mercancía solicitada en bodega',
-                'Asesorando trámite de crédito Coppel en módulo',
+                'Asesorando trámite de Crédito Coppel en módulo',
               ].map((reason) => (
                 <button
                   key={reason}
+                  type="button"
                   onClick={() => setRejectReason(reason)}
-                  className={`w-full text-left p-3 rounded-2xl text-xs font-bold transition-all border ${
+                  className={`w-full text-left p-3 rounded-2xl text-xs font-bold transition-all border cursor-pointer ${
                     rejectReason === reason
-                      ? 'bg-amber-400 text-slate-950 border-amber-300 shadow'
-                      : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-750'
+                      ? 'bg-[#0047BA] text-white border-[#0047BA] shadow'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
                   {reason}
@@ -599,14 +749,16 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
 
             <div className="pt-2 flex gap-2">
               <button
+                type="button"
                 onClick={() => setIsRejectModalOpen(false)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
               >
                 Cancelar
               </button>
               <button
+                type="button"
                 onClick={handleConfirmReject}
-                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black shadow"
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black shadow cursor-pointer"
               >
                 Confirmar Rechazo
               </button>
@@ -615,13 +767,16 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
         </div>
       )}
 
-      {/* MODAL DE INSPECCIÓN DETALLADA Y RESULTADO */}
+      {/* MODAL DE RESULTADO, OPCIONES COMUNES Y COMPROBACIÓN */}
       <ResolutionOutcomeModal
         isOpen={isOutcomeModalOpen}
         onClose={() => setIsOutcomeModalOpen(false)}
         alert={activeCall}
+        initialOutcome={modalInitialOutcome}
+        startWithCamera={modalStartCamera}
         onConfirmOutcome={handleConfirmOutcome}
         roleTitle="Asesor en Piso"
+        advisorName={myEmployee?.name}
       />
 
       {/* MODAL DE CELEBRACIÓN DE PUNTOS GANADOS (FANFARRIA Y GAMIFICACIÓN) */}

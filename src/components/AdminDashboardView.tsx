@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Employee, AssistanceAlert, ResolutionOutcome } from '../types';
+import { Employee, AssistanceAlert, ResolutionOutcome, AssistanceVerificationProof } from '../types';
 import { staffSync, INITIAL_EMPLOYEES } from '../services/kioskSync';
 import { soundEffects } from '../services/soundEffects';
 import { voice } from '../services/voice';
@@ -28,7 +28,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [isSimulatingCall, setIsSimulatingCall] = useState<boolean>(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState<boolean>(false);
   const [isOutcomeModalOpen, setIsOutcomeModalOpen] = useState<boolean>(false);
-  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
   const prevCallIdRef = useRef<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -122,11 +122,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   };
 
   // CONFIRMAR RESULTADO DE LA INSPECCIÓN (SÍ SE PUDO RESOLVER / NO SE PUDO RESOLVER)
-  const handleConfirmOutcome = async (outcome: ResolutionOutcome, notes: string) => {
+  const handleConfirmOutcome = async (
+    outcome: ResolutionOutcome,
+    notes: string,
+    verificationProof?: AssistanceVerificationProof,
+    outcomeCategory?: string
+  ) => {
     if (!activeCall) return;
     soundEffects.playSuccessChime();
     const alertId = activeCall.id;
-    await staffSync.resolveCall(alertId, outcome, notes);
+    await staffSync.resolveCall(alertId, outcome, notes, verificationProof, outcomeCategory);
     setIsOutcomeModalOpen(false);
 
     if (outcome === 'resuelto_exitoso') {
@@ -156,16 +161,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setTimeout(() => setIsSimulatingCall(false), 500);
   };
 
-  const handleCopyStaffLink = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const url = `${origin}/?role=staff`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(url);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    }
-  };
-
   const availableEmployees = employees.filter((e) => e.status === 'disponible');
   const enPisoEmployees = employees.filter((e) => e.status === 'en_piso');
   const busyEmployees = employees.filter((e) => e.status === 'ocupado');
@@ -179,11 +174,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto p-2 sm:p-4 md:p-6 space-y-4 sm:space-y-6 select-none">
+    <div className="w-full max-w-6xl mx-auto p-2 sm:p-4 md:p-6 space-y-4 sm:space-y-6 select-none bg-[#F4F6F9] text-slate-800">
       {/* 1. HEADER DE SUPERVISIÓN COPPEL */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-[#0047BA] text-white rounded-3xl p-4 sm:p-6 shadow-md border-b-4 border-[#FFD100] flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 text-[#002B66] flex items-center justify-center font-black text-2xl shadow-lg shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-[#FFD100] text-[#0047BA] flex items-center justify-center font-black text-2xl shadow-md shrink-0 border-2 border-white/20">
             <i className="fa-solid fa-shield-halved"></i>
           </div>
           <div>
@@ -191,11 +186,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               <h1 className="text-lg sm:text-xl font-black text-white tracking-tight">
                 Centro de Despacho & Supervisión de Tienda
               </h1>
-              <span className="text-[10px] bg-blue-950 text-amber-300 font-extrabold px-2.5 py-0.5 rounded-full border border-blue-800">
-                Coppel Flagship
+              <span className="text-[10px] bg-[#FFD100] text-[#0047BA] font-black px-2.5 py-0.5 rounded-full shadow-sm uppercase">
+                Coppel Piso
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-blue-100 mt-0.5">
               Monitoreo en tiempo real de pasillos, asignación de asesores y control de tiempos de atención.
             </p>
           </div>
@@ -206,33 +201,33 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           {!isAudioEnabled ? (
             <button
               onClick={handleEnableAudio}
-              className="py-2 px-3.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-black shadow flex items-center space-x-1.5 animate-pulse transition-colors"
+              className="py-2 px-3.5 bg-[#FFD100] hover:bg-amber-400 text-[#0047BA] rounded-xl text-xs font-black shadow flex items-center space-x-1.5 animate-pulse transition-colors cursor-pointer"
             >
               <i className="fa-solid fa-bell"></i>
               <span>Activar Sirena</span>
             </button>
           ) : (
-            <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <div className="bg-white/15 border border-white/30 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
               <span>Sirena Activa</span>
             </div>
           )}
 
           <button
             onClick={() => onOpenShareModal?.('staff')}
-            className="py-2 px-3.5 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors shadow active:scale-95"
+            className="py-2 px-3.5 bg-white/15 hover:bg-white/25 text-white border border-white/30 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors shadow active:scale-95 cursor-pointer"
             title="Ver código QR y enlace para compartir con asesores en sus celulares"
           >
-            <i className="fa-solid fa-qrcode text-amber-400"></i>
+            <i className="fa-solid fa-qrcode text-[#FFD100]"></i>
             <span>QR App Celulares</span>
           </button>
 
           <button
             onClick={() => onOpenShareModal?.('kiosk_api')}
-            className="py-2 px-3.5 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-600 text-white border border-blue-500/40 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all shadow active:scale-95"
+            className="py-2 px-3.5 bg-[#FFD100] hover:bg-amber-400 text-[#0047BA] border border-amber-300 rounded-xl text-xs font-black flex items-center space-x-1.5 transition-all shadow active:scale-95 cursor-pointer"
             title="Conectar Kiosco Tótem externo con API y código de integración"
           >
-            <i className="fa-solid fa-plug-circle-bolt text-amber-400"></i>
+            <i className="fa-solid fa-plug-circle-bolt"></i>
             <span>Conectar Kiosco Externo</span>
           </button>
         </div>
@@ -240,88 +235,88 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
       {/* 2. TARJETAS DE INDICADORES DE RENDIMIENTO (KPIs) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 sm:p-4">
-          <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">
+        <div className="bg-white border-2 border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm">
+          <span className="text-[10px] text-slate-500 uppercase font-black tracking-wider block">
             Asesores Disponibles
           </span>
           <div className="flex items-baseline space-x-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-black text-emerald-400">
+            <span className="text-2xl sm:text-3xl font-black text-emerald-600">
               {availableEmployees.length}
             </span>
             <span className="text-xs text-slate-500 font-bold">de {employees.length}</span>
           </div>
-          <span className="text-[10px] text-emerald-500/80 font-medium mt-0.5 block">
+          <span className="text-[10px] text-emerald-700 font-medium mt-0.5 block">
             ● {enPisoEmployees.length} en piso · {busyEmployees.length} ocupados
           </span>
         </div>
 
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 sm:p-4">
-          <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">
+        <div className="bg-white border-2 border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm">
+          <span className="text-[10px] text-slate-500 uppercase font-black tracking-wider block">
             Estado de Solicitudes
           </span>
           <div className="flex items-baseline space-x-2 mt-1">
-            <span className={`text-2xl sm:text-3xl font-black ${activeCall ? 'text-amber-400' : 'text-slate-200'}`}>
+            <span className={`text-2xl sm:text-3xl font-black ${activeCall ? 'text-amber-500' : 'text-[#0047BA]'}`}>
               {activeCall ? '1 Activa' : '0 Pendientes'}
             </span>
           </div>
-          <span className="text-[10px] text-slate-400 font-medium mt-0.5 block">
+          <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">
             {activeCall ? `Esperando en ${activeCall.aisle.split('-')[0]}` : 'Piso de venta al 100%'}
           </span>
         </div>
 
         <div
           onClick={() => setActiveTab('gamification')}
-          className="bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/40 border border-amber-500/40 hover:border-amber-400 rounded-2xl p-3.5 sm:p-4 cursor-pointer transition-all hover:scale-[1.01] shadow-lg group"
+          className="bg-white border-2 border-[#FFD100] hover:border-[#0047BA] rounded-2xl p-3.5 sm:p-4 cursor-pointer transition-all hover:scale-[1.01] shadow-sm group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-amber-300 uppercase font-black tracking-wider block">
+            <span className="text-[10px] text-[#0047BA] uppercase font-black tracking-wider block">
               Puntos de Asesores
             </span>
-            <span className="text-[9px] bg-amber-400/20 text-amber-300 px-1.5 py-0.2 rounded font-black border border-amber-400/30">
+            <span className="text-[9px] bg-amber-100 text-[#0047BA] px-1.5 py-0.2 rounded font-black border border-amber-300">
               🏆 Gamificación
             </span>
           </div>
           <div className="flex items-baseline space-x-1.5 mt-1">
-            <span className="text-2xl sm:text-3xl font-black text-white font-mono group-hover:text-amber-300 transition-colors">
+            <span className="text-2xl sm:text-3xl font-black text-[#0047BA] font-mono group-hover:text-amber-500 transition-colors">
               {totalStorePoints.toLocaleString()}
             </span>
-            <span className="text-xs text-amber-400 font-bold">PTS</span>
+            <span className="text-xs text-amber-500 font-bold">PTS</span>
           </div>
-          <span className="text-[10px] text-slate-400 font-medium mt-0.5 block truncate">
-            Top #1: <strong className="text-amber-300">{topAdvisor?.name.split(' ')[0]}</strong> ({topAdvisor?.points.toLocaleString()} pts)
+          <span className="text-[10px] text-slate-500 font-medium mt-0.5 block truncate">
+            Top #1: <strong className="text-[#0047BA]">{topAdvisor?.name.split(' ')[0]}</strong> ({topAdvisor?.points.toLocaleString()} pts)
           </span>
         </div>
 
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 sm:p-4">
-          <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">
+        <div className="bg-white border-2 border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm">
+          <span className="text-[10px] text-slate-500 uppercase font-black tracking-wider block">
             Atenciones Resueltas
           </span>
           <div className="flex items-baseline space-x-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-black text-cyan-400">
+            <span className="text-2xl sm:text-3xl font-black text-[#0047BA]">
               {alertsHistory.filter((a) => a.status === 'resolved').length + 75}
             </span>
-            <span className="text-xs text-emerald-400 font-bold">98.2% éxito</span>
+            <span className="text-xs text-emerald-600 font-bold">98.2% éxito</span>
           </div>
-          <span className="text-[10px] text-slate-400 font-medium mt-0.5 block">
+          <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">
             SLA: 24s promedio · ★ 4.9/5
           </span>
         </div>
       </div>
 
       {/* 2.1 SELECTOR DE VISTAS DEL ADMINISTRADOR */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-1.5 flex flex-wrap items-center gap-1.5 shadow-lg">
+      <div className="bg-white border-2 border-slate-200 rounded-2xl p-1.5 flex flex-wrap items-center gap-1.5 shadow-sm">
         <button
           type="button"
           onClick={() => setActiveTab('live')}
           className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'live'
-              ? 'bg-gradient-to-r from-blue-700 to-indigo-700 text-white shadow-lg ring-2 ring-blue-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+              ? 'bg-[#0047BA] text-white shadow-md'
+              : 'text-slate-600 hover:text-[#0047BA] hover:bg-slate-50'
           }`}
         >
-          <i className="fa-solid fa-satellite-dish text-amber-400"></i>
+          <i className="fa-solid fa-satellite-dish text-[#FFD100]"></i>
           <span>Despacho en Vivo</span>
-          {activeCall && <span className="w-2 h-2 rounded-full bg-red-400 animate-ping"></span>}
+          {activeCall && <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>}
         </button>
 
         <button
@@ -329,13 +324,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           onClick={() => setActiveTab('gamification')}
           className={`flex-1 min-w-[170px] py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'gamification'
-              ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-lg ring-2 ring-amber-400/40 font-black'
-              : 'text-amber-300 hover:text-white hover:bg-slate-800/80'
+              ? 'bg-[#FFD100] text-[#0047BA] shadow-md font-black border border-amber-300'
+              : 'text-slate-700 hover:text-[#0047BA] hover:bg-slate-50'
           }`}
         >
-          <i className="fa-solid fa-trophy"></i>
+          <i className="fa-solid fa-trophy text-amber-500"></i>
           <span>Puntos & Gamificación</span>
-          <span className="bg-amber-400/20 text-amber-300 text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
+          <span className="bg-[#0047BA] text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
             {totalStorePoints.toLocaleString()} pts
           </span>
         </button>
@@ -345,11 +340,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           onClick={() => setActiveTab('team')}
           className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'team'
-              ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-lg ring-2 ring-slate-600/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+              ? 'bg-[#0047BA] text-white shadow-md'
+              : 'text-slate-600 hover:text-[#0047BA] hover:bg-slate-50'
           }`}
         >
-          <i className="fa-solid fa-users text-amber-400"></i>
+          <i className="fa-solid fa-users text-[#FFD100]"></i>
           <span>Equipo en Piso</span>
         </button>
 
@@ -358,11 +353,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           onClick={() => setActiveTab('history')}
           className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer ${
             activeTab === 'history'
-              ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-lg ring-2 ring-slate-600/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+              ? 'bg-[#0047BA] text-white shadow-md'
+              : 'text-slate-600 hover:text-[#0047BA] hover:bg-slate-50'
           }`}
         >
-          <i className="fa-solid fa-clock-rotate-left text-amber-400"></i>
+          <i className="fa-solid fa-clock-rotate-left text-[#FFD100]"></i>
           <span>Historial ({alertsHistory.length})</span>
         </button>
       </div>
@@ -371,19 +366,19 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       {activeCall && activeTab !== 'live' && (
         <div
           onClick={() => setActiveTab('live')}
-          className="bg-gradient-to-r from-red-950 via-slate-900 to-red-950 border-2 border-red-500 text-white p-3.5 sm:p-4 rounded-2xl flex items-center justify-between shadow-2xl cursor-pointer hover:border-red-400 transition-all animate-pulse"
+          className="bg-red-50 border-2 border-red-500 text-slate-900 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between shadow-lg cursor-pointer hover:bg-red-100 transition-all animate-pulse"
         >
           <div className="flex items-center space-x-3">
             <span className="w-3.5 h-3.5 rounded-full bg-red-500 animate-ping"></span>
             <div>
-              <span className="font-black text-xs sm:text-sm uppercase tracking-wider block text-white flex items-center gap-1.5">
-                <i className="fa-solid fa-bell text-amber-400"></i>
+              <span className="font-black text-xs sm:text-sm uppercase tracking-wider block text-red-900 flex items-center gap-1.5">
+                <i className="fa-solid fa-bell text-red-600"></i>
                 <span>Solicitud Activa en {activeCall.aisle}</span>
               </span>
-              <p className="text-xs text-red-200 mt-0.5 font-bold">"{activeCall.reason}"</p>
+              <p className="text-xs text-red-700 mt-0.5 font-bold">"{activeCall.reason}"</p>
             </div>
           </div>
-          <span className="bg-red-600 hover:bg-red-500 text-white font-black text-xs px-3.5 py-2 rounded-xl shadow shrink-0">
+          <span className="bg-red-600 hover:bg-red-700 text-white font-black text-xs px-3.5 py-2 rounded-xl shadow shrink-0">
             Atender Ahora ➜
           </span>
         </div>
@@ -402,306 +397,306 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         <>
           {/* 3. ALERTA ACTIVA EN TIEMPO REAL (ZONA CRÍTICA DE DESPACHO) */}
           <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-black uppercase tracking-wider text-slate-300 flex items-center space-x-2">
-            <i className="fa-solid fa-satellite-dish text-amber-400"></i>
-            <span>Solicitud de Asistencia en Pasillos</span>
-          </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-black uppercase tracking-wider text-[#0047BA] flex items-center space-x-2">
+                <i className="fa-solid fa-satellite-dish text-amber-500"></i>
+                <span>Solicitud de Asistencia en Pasillos</span>
+              </h2>
 
-          {/* Generador rápido de alertas para pruebas del administrador */}
-          <div className="flex items-center space-x-2">
-            <span className="text-[11px] text-slate-400 hidden sm:inline">Simular llamada de cliente:</span>
-            <button
-              onClick={() =>
-                handleSimulateClientCall(
-                  'Pasillo 4 - Mueblería Central',
-                  'Muebles & Salas',
-                  'Cliente solicita cotización de sala seccional y dudas sobre flete'
-                )
-              }
-              disabled={isSimulatingCall}
-              className="py-1 px-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg text-[11px] font-bold border border-slate-700 flex items-center space-x-1"
-            >
-              <i className="fa-solid fa-couch"></i>
-              <span>Pasillo 4</span>
-            </button>
-            <button
-              onClick={() =>
-                handleSimulateClientCall(
-                  'Pasillo 1A - Telefonía & Accesorios',
-                  'Electrónica & Celulares',
-                  'Cliente pide ver Samsung Galaxy A55 y verificar crédito Coppel'
-                )
-              }
-              disabled={isSimulatingCall}
-              className="py-1 px-2.5 bg-slate-800 hover:bg-slate-700 text-blue-300 rounded-lg text-[11px] font-bold border border-slate-700 flex items-center space-x-1"
-            >
-              <i className="fa-solid fa-mobile-screen"></i>
-              <span>Pasillo 1A</span>
-            </button>
-          </div>
-        </div>
-
-        {activeCall ? (
-          <div className={`rounded-3xl p-5 sm:p-6 shadow-2xl border-2 transition-all space-y-4 ${
-            activeCall.status === 'calling'
-              ? 'bg-gradient-to-r from-red-950/90 via-slate-900 to-slate-900 border-red-500 ring-4 ring-red-500/20'
-              : 'bg-gradient-to-r from-blue-950/90 via-slate-900 to-slate-900 border-blue-500'
-          }`}>
-            {/* Header de la Alerta */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
-              <div className="flex items-center space-x-2.5">
-                <span className={`w-3.5 h-3.5 rounded-full ${activeCall.status === 'calling' ? 'bg-red-500 animate-ping' : 'bg-blue-400 animate-pulse'}`}></span>
-                <span className="font-black text-sm sm:text-base text-white uppercase tracking-wider">
-                  {activeCall.status === 'calling' ? '🚨 Solicitud Entrante sin Atender' : '🏃‍♂️ Asesor en Camino a Atender'}
-                </span>
-                <span className="text-[11px] font-mono text-amber-300 bg-black/40 px-2.5 py-0.5 rounded-full border border-amber-400/30">
-                  ⏱ Esperando hace {elapsedSeconds}s
-                </span>
-              </div>
-
-              {/* Estado de asignación actual */}
-              <div>
-                {activeCall.assignedAssociateName ? (
-                  <span className="text-xs text-blue-200 bg-blue-950 px-3 py-1 rounded-xl border border-blue-800 font-bold flex items-center gap-1.5">
-                    <i className="fa-solid fa-user-check text-amber-400"></i>
-                    <span>Asignado a: <strong>{activeCall.assignedAssociateName}</strong></span>
-                  </span>
-                ) : (
-                  <span className="text-xs text-amber-300 bg-amber-950/80 px-3 py-1 rounded-xl border border-amber-800 font-bold flex items-center gap-1.5 animate-pulse">
-                    <i className="fa-solid fa-circle-exclamation text-amber-400"></i>
-                    <span>¡Sin asesor asignado! Toma la llamada o reasigna</span>
-                  </span>
-                )}
+              {/* Generador rápido de alertas para pruebas del administrador */}
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] text-slate-500 hidden sm:inline font-bold">Simular llamada de cliente:</span>
+                <button
+                  onClick={() =>
+                    handleSimulateClientCall(
+                      'Pasillo 4 - Mueblería Central',
+                      'Muebles & Salas',
+                      'Cliente solicita cotización de sala seccional y dudas sobre flete'
+                    )
+                  }
+                  disabled={isSimulatingCall}
+                  className="py-1 px-2.5 bg-white hover:bg-amber-50 text-[#0047BA] rounded-lg text-[11px] font-bold border-2 border-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  <i className="fa-solid fa-couch text-amber-500"></i>
+                  <span>Pasillo 4</span>
+                </button>
+                <button
+                  onClick={() =>
+                    handleSimulateClientCall(
+                      'Pasillo 1A - Telefonía & Accesorios',
+                      'Electrónica & Celulares',
+                      'Cliente pide ver Samsung Galaxy A55 y verificar crédito Coppel'
+                    )
+                  }
+                  disabled={isSimulatingCall}
+                  className="py-1 px-2.5 bg-white hover:bg-blue-50 text-[#0047BA] rounded-lg text-[11px] font-bold border-2 border-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  <i className="fa-solid fa-mobile-screen text-[#0047BA]"></i>
+                  <span>Pasillo 1A</span>
+                </button>
               </div>
             </div>
 
-            {/* Aviso especial: Si un colaborador rechazó la alerta */}
-            {activeCall.lastRejectionReason && (
-              <div className="bg-amber-950/90 border-2 border-amber-500 text-amber-200 p-3.5 rounded-2xl flex items-start space-x-3 text-xs animate-in slide-in-from-top-2">
-                <i className="fa-solid fa-triangle-exclamation text-amber-400 text-base mt-0.5 shrink-0"></i>
-                <div className="flex-1">
-                  <p className="font-black text-white">
-                    ⚠️ {activeCall.lastRejectedByName || 'Un asesor'} rechazó esta llamada
-                  </p>
-                  <p className="text-amber-300 mt-0.5">
-                    Motivo indicado: <em>"{activeCall.lastRejectionReason}"</em>
-                  </p>
-                  <p className="text-[11px] text-amber-400/90 font-medium mt-1">
-                    Acción requerida: Redirige a otro asesor disponible o toma la llamada tú mismo para cumplir con el SLA.
-                  </p>
+            {activeCall ? (
+              <div className={`rounded-3xl p-5 sm:p-6 shadow-xl border-2 transition-all space-y-4 ${
+                activeCall.status === 'calling'
+                  ? 'bg-gradient-to-r from-red-50 via-white to-white border-red-500 ring-4 ring-red-500/10'
+                  : 'bg-gradient-to-r from-blue-50 via-white to-white border-[#0047BA] ring-4 ring-blue-500/10'
+              }`}>
+                {/* Header de la Alerta */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div className="flex items-center space-x-2.5">
+                    <span className={`w-3.5 h-3.5 rounded-full ${activeCall.status === 'calling' ? 'bg-red-500 animate-ping' : 'bg-[#0047BA] animate-pulse'}`}></span>
+                    <span className="font-black text-sm sm:text-base text-slate-900 uppercase tracking-wider">
+                      {activeCall.status === 'calling' ? '🚨 Solicitud Entrante sin Atender' : '🏃‍♂️ Asesor en Camino a Atender'}
+                    </span>
+                    <span className="text-[11px] font-mono text-[#0047BA] bg-blue-100 px-2.5 py-0.5 rounded-full border border-blue-200 font-bold">
+                      ⏱ Esperando hace {elapsedSeconds}s
+                    </span>
+                  </div>
+
+                  {/* Estado de asignación actual */}
+                  <div>
+                    {activeCall.assignedAssociateName ? (
+                      <span className="text-xs text-[#0047BA] bg-blue-50 px-3 py-1 rounded-xl border border-blue-200 font-bold flex items-center gap-1.5">
+                        <i className="fa-solid fa-user-check text-emerald-600"></i>
+                        <span>Asignado a: <strong>{activeCall.assignedAssociateName}</strong></span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-amber-900 bg-amber-50 px-3 py-1 rounded-xl border border-amber-300 font-bold flex items-center gap-1.5 animate-pulse">
+                        <i className="fa-solid fa-circle-exclamation text-amber-500"></i>
+                        <span>¡Sin asesor asignado! Toma la llamada o reasigna</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
 
-            {/* Detalles del Cliente y Ubicación */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase font-black block">
-                  Ubicación en Piso de Venta:
-                </span>
-                <p className="text-base font-black text-white flex items-center gap-2">
-                  <i className="fa-solid fa-location-dot text-amber-400"></i>
-                  {activeCall.aisle}
-                </p>
-                <span className="text-xs text-blue-300 block">
-                  Departamento: <strong>{activeCall.storeDepartment}</strong>
-                </span>
-              </div>
-
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase font-black block">
-                  Motivo de la Solicitud / Duda:
-                </span>
-                <p className="text-sm font-extrabold text-amber-300 leading-snug">
-                  "{activeCall.reason}"
-                </p>
-                <span className="text-[10px] text-slate-400 block font-mono">
-                  Hora de llamada: {activeCall.timestamp}
-                </span>
-              </div>
-            </div>
-
-            {/* BOTONES DE CONTROL DEL ADMINISTRADOR */}
-            <div className="pt-2 border-t border-white/10 flex flex-wrap items-center gap-2.5">
-              {/* BOTÓN 1: TOMAR LA ALERTA DIRECTAMENTE */}
-              <button
-                onClick={handleAdminTakeCall}
-                className="py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl flex items-center space-x-2 active:scale-95 transition-all"
-              >
-                <i className="fa-solid fa-hand-holding-hand text-base"></i>
-                <span>Tomar Yo la Alerta</span>
-              </button>
-
-              {/* BOTÓN 2: ASIGNAR / REDIRIGIR A ASESOR */}
-              <button
-                onClick={() => setIsAssignModalOpen(true)}
-                className="py-2.5 px-4 bg-gradient-to-r from-blue-600 to-[#002B66] hover:from-blue-500 hover:to-blue-900 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl flex items-center space-x-2 border border-blue-400/40 active:scale-95 transition-all"
-              >
-                <i className="fa-solid fa-share-nodes text-base text-amber-400"></i>
-                <span>Asignar / Redirigir</span>
-              </button>
-
-              {/* BOTONES DE RESOLUCIÓN CON INSPECCIÓN (¿SE PUDO RESOLVER O NO?) */}
-              <div className="flex items-center space-x-1.5 ml-auto">
-                <button
-                  onClick={() => handleConfirmOutcome('resuelto_exitoso', '🛒 Venta concretada con éxito')}
-                  className="py-2.5 px-3 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-600 rounded-xl text-xs font-bold flex items-center space-x-1 transition-all active:scale-95"
-                  title="Marcar con 1 clic: Sí se pudo resolver"
-                >
-                  <i className="fa-solid fa-circle-check text-emerald-400"></i>
-                  <span>Sí se resolvió</span>
-                </button>
-
-                <button
-                  onClick={() => handleConfirmOutcome('no_resuelto', '🚫 Sin inventario / No resuelto')}
-                  className="py-2.5 px-3 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-700 rounded-xl text-xs font-bold flex items-center space-x-1 transition-all active:scale-95"
-                  title="Marcar con 1 clic: No se pudo resolver"
-                >
-                  <i className="fa-solid fa-circle-xmark text-red-400"></i>
-                  <span>No se resolvió</span>
-                </button>
-
-                <button
-                  onClick={handleOpenResolveModal}
-                  className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-bold flex items-center space-x-1 transition-colors"
-                  title="Abrir formulario detallado con opciones de inspección"
-                >
-                  <i className="fa-solid fa-clipboard-check"></i>
-                  <span className="hidden sm:inline">Inspeccionar</span>
-                </button>
-
-                {/* BOTÓN DESCARTAR */}
-                <button
-                  onClick={handleCancelCall}
-                  className="py-2.5 px-3 bg-red-950/40 hover:bg-red-900 text-red-300 font-bold rounded-xl text-xs border border-red-900/60 transition-colors"
-                  title="Descartar llamada"
-                >
-                  <i className="fa-solid fa-trash-can"></i>
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 text-center space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-950 text-emerald-400 border border-emerald-800/80 flex items-center justify-center text-2xl mx-auto shadow-inner">
-              <i className="fa-solid fa-circle-check"></i>
-            </div>
-            <h3 className="font-extrabold text-sm text-white">Sin llamadas pendientes en pasillos</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Todo el piso de venta está despejado. Si un cliente solicita apoyo en cualquier pasillo, la alerta aparecerá inmediatamente aquí para asignarla o tomarla.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 4. MODAL DE ASIGNACIÓN RÁPIDA DE ASESORES CON 1 CLIC */}
-      {isAssignModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
-                  <i className="fa-solid fa-user-plus"></i>
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm sm:text-base text-white">
-                    Asignar Alerta a Colaborador
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Selecciona al asesor más cercano o disponible para atender de inmediato
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsAssignModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center"
-              >
-                <i className="fa-solid fa-xmark"></i>
-              </button>
-            </div>
-
-            <div className="space-y-2 max-h-80 overflow-y-auto screen-scroll">
-              {employees.map((emp) => {
-                const wasRejected = activeCall?.rejectedBy?.includes(emp.id);
-                return (
-                  <div
-                    key={emp.id}
-                    className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
-                      wasRejected
-                        ? 'bg-red-950/30 border-red-900/60 opacity-70'
-                        : emp.status === 'disponible'
-                        ? 'bg-slate-800/80 hover:bg-slate-750 border-slate-700 hover:border-amber-400/50'
-                        : 'bg-slate-900/50 border-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-slate-800 text-amber-300 font-black text-sm flex items-center justify-center border border-slate-700 shrink-0">
-                        {emp.initials}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-black text-xs text-white truncate">{emp.name}</span>
-                          <span
-                            className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                              emp.status === 'disponible'
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                : emp.status === 'en_piso'
-                                ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                                : emp.status === 'ocupado'
-                                ? 'bg-red-950 text-red-300 border border-red-800'
-                                : 'bg-slate-800 text-slate-400'
-                            }`}
-                          >
-                            {emp.status}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-400 truncate block">{emp.role}</span>
-                        <span className="text-[10px] text-slate-500 font-mono block">
-                          📍 {emp.currentAisle} · ★ {emp.rating}
-                        </span>
-                        {wasRejected && (
-                          <span className="text-[10px] text-red-400 font-bold block mt-0.5">
-                            ⚠️ Rechazó la llamada anteriormente
-                          </span>
-                        )}
-                      </div>
+                {/* Aviso especial: Si un colaborador rechazó la alerta */}
+                {activeCall.lastRejectionReason && (
+                  <div className="bg-amber-50 border-2 border-amber-400 text-amber-900 p-3.5 rounded-2xl flex items-start space-x-3 text-xs animate-in slide-in-from-top-2">
+                    <i className="fa-solid fa-triangle-exclamation text-amber-600 text-base mt-0.5 shrink-0"></i>
+                    <div className="flex-1">
+                      <p className="font-black text-amber-950">
+                        ⚠️ {activeCall.lastRejectedByName || 'Un asesor'} rechazó esta llamada
+                      </p>
+                      <p className="text-amber-800 mt-0.5">
+                        Motivo indicado: <em>"{activeCall.lastRejectionReason}"</em>
+                      </p>
+                      <p className="text-[11px] text-amber-700 font-medium mt-1">
+                        Acción requerida: Redirige a otro asesor disponible o toma la llamada tú mismo para cumplir con el SLA.
+                      </p>
                     </div>
+                  </div>
+                )}
+
+                {/* Detalles del Cliente y Ubicación */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-1 shadow-sm">
+                    <span className="text-[10px] text-slate-400 uppercase font-black block">
+                      Ubicación en Piso de Venta:
+                    </span>
+                    <p className="text-base font-black text-[#0047BA] flex items-center gap-2">
+                      <i className="fa-solid fa-location-dot text-red-500"></i>
+                      {activeCall.aisle}
+                    </p>
+                    <span className="text-xs text-slate-600 block font-bold">
+                      Departamento: <strong>{activeCall.storeDepartment}</strong>
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-1 shadow-sm">
+                    <span className="text-[10px] text-slate-400 uppercase font-black block">
+                      Motivo de la Solicitud / Duda:
+                    </span>
+                    <p className="text-sm font-extrabold text-slate-900 leading-snug">
+                      "{activeCall.reason}"
+                    </p>
+                    <span className="text-[10px] text-slate-400 block font-mono">
+                      Hora de llamada: {activeCall.timestamp}
+                    </span>
+                  </div>
+                </div>
+
+                {/* BOTONES DE CONTROL DEL ADMINISTRADOR */}
+                <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-2.5">
+                  {/* BOTÓN 1: TOMAR LA ALERTA DIRECTAMENTE */}
+                  <button
+                    onClick={handleAdminTakeCall}
+                    className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl text-xs sm:text-sm shadow-md flex items-center space-x-2 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <i className="fa-solid fa-hand-holding-hand text-base"></i>
+                    <span>Tomar Yo la Alerta</span>
+                  </button>
+
+                  {/* BOTÓN 2: ASIGNAR / REDIRIGIR A ASESOR */}
+                  <button
+                    onClick={() => setIsAssignModalOpen(true)}
+                    className="py-2.5 px-4 bg-[#0047BA] hover:bg-[#003899] text-white font-black rounded-2xl text-xs sm:text-sm shadow-md flex items-center space-x-2 border border-blue-600 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <i className="fa-solid fa-share-nodes text-base text-[#FFD100]"></i>
+                    <span>Asignar / Redirigir</span>
+                  </button>
+
+                  {/* BOTONES DE RESOLUCIÓN CON INSPECCIÓN (¿SE PUDO RESOLVER O NO?) */}
+                  <div className="flex items-center space-x-1.5 ml-auto">
+                    <button
+                      onClick={() => handleConfirmOutcome('resuelto_exitoso', '🛒 Venta concretada con éxito')}
+                      className="py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-2 border-emerald-500 rounded-xl text-xs font-bold flex items-center space-x-1 transition-all active:scale-95 cursor-pointer"
+                      title="Marcar con 1 clic: Sí se pudo resolver"
+                    >
+                      <i className="fa-solid fa-circle-check text-emerald-600"></i>
+                      <span>Sí se resolvió</span>
+                    </button>
 
                     <button
-                      onClick={() => handleAssignToEmployee(emp.id)}
-                      className="py-2 px-3.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black rounded-xl text-xs shadow active:scale-95 shrink-0"
+                      onClick={() => handleConfirmOutcome('no_resuelto', '🚫 Sin inventario / No resuelto')}
+                      className="py-2.5 px-3 bg-red-50 hover:bg-red-100 text-red-800 border-2 border-red-500 rounded-xl text-xs font-bold flex items-center space-x-1 transition-all active:scale-95 cursor-pointer"
+                      title="Marcar con 1 clic: No se pudo resolver"
                     >
-                      Asignar
+                      <i className="fa-solid fa-circle-xmark text-red-600"></i>
+                      <span>No se resolvió</span>
+                    </button>
+
+                    <button
+                      onClick={handleOpenResolveModal}
+                      className="py-2.5 px-3 bg-white hover:bg-slate-50 text-[#0047BA] border-2 border-slate-300 rounded-xl text-xs font-bold flex items-center space-x-1 transition-colors cursor-pointer"
+                      title="Abrir formulario detallado con opciones de inspección"
+                    >
+                      <i className="fa-solid fa-clipboard-check"></i>
+                      <span className="hidden sm:inline">Inspeccionar</span>
+                    </button>
+
+                    {/* BOTÓN DESCARTAR */}
+                    <button
+                      onClick={handleCancelCall}
+                      className="py-2.5 px-3 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-xl text-xs border border-red-300 transition-colors cursor-pointer"
+                      title="Descartar llamada"
+                    >
+                      <i className="fa-solid fa-trash-can"></i>
                     </button>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 text-center space-y-2 shadow-sm">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#0047BA] border border-blue-200 flex items-center justify-center text-2xl mx-auto shadow-inner">
+                  <i className="fa-solid fa-circle-check text-emerald-500"></i>
+                </div>
+                <h3 className="font-extrabold text-sm text-[#0047BA]">Sin llamadas pendientes en pasillos</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Todo el piso de venta está despejado. Si un cliente solicita apoyo en cualquier pasillo, la alerta aparecerá inmediatamente aquí para asignarla o tomarla.
+                </p>
+              </div>
+            )}
           </div>
-        </div>
+
+          {/* 4. MODAL DE ASIGNACIÓN RÁPIDA DE ASESORES CON 1 CLIC */}
+          {isAssignModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white border-2 border-[#0047BA] w-full max-w-lg rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 text-slate-800">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#FFD100] text-[#0047BA] flex items-center justify-center font-black">
+                      <i className="fa-solid fa-user-plus"></i>
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
+                        Asignar Alerta a Colaborador
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Selecciona al asesor más cercano o disponible para atender de inmediato
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsAssignModalOpen(false)}
+                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
+                  >
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-80 overflow-y-auto screen-scroll">
+                  {employees.map((emp) => {
+                    const wasRejected = activeCall?.rejectedBy?.includes(emp.id);
+                    return (
+                      <div
+                        key={emp.id}
+                        className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                          wasRejected
+                            ? 'bg-red-50 border-red-300 opacity-70'
+                            : emp.status === 'disponible'
+                            ? 'bg-slate-50 hover:bg-blue-50 border-slate-200 hover:border-blue-300'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#0047BA] font-black text-sm flex items-center justify-center border border-blue-200 shrink-0">
+                            {emp.initials}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-black text-xs text-slate-900 truncate">{emp.name}</span>
+                              <span
+                                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                                  emp.status === 'disponible'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : emp.status === 'en_piso'
+                                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                    : emp.status === 'ocupado'
+                                    ? 'bg-red-50 text-red-800 border-red-300'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {emp.status}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-slate-500 truncate block">{emp.role}</span>
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              📍 {emp.currentAisle} · ★ {emp.rating}
+                            </span>
+                            {wasRejected && (
+                              <span className="text-[10px] text-red-600 font-bold block mt-0.5">
+                                ⚠️ Rechazó la llamada anteriormente
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleAssignToEmployee(emp.id)}
+                          className="py-2 px-3.5 bg-[#0047BA] hover:bg-[#003899] text-white font-black rounded-xl text-xs shadow active:scale-95 shrink-0 cursor-pointer"
+                        >
+                          Asignar
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
-      </>
-    )}
 
       {/* 5. TABLERO DE EQUIPO Y GESTIÓN EN PISO */}
       {(activeTab === 'team' || activeTab === 'live') && (
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-4 sm:p-6 space-y-4 shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+        <div className="bg-white border-2 border-slate-200 rounded-3xl p-4 sm:p-6 space-y-4 shadow-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-                <i className="fa-solid fa-users text-amber-400"></i>
+              <h3 className="text-sm font-black uppercase tracking-wider text-[#0047BA] flex items-center gap-2">
+                <i className="fa-solid fa-users text-[#FFD100]"></i>
                 <span>Estado del Equipo en Piso & Puntos</span>
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 Cambia la disponibilidad con 1 clic y monitorea los puntos de cada colaborador
               </p>
             </div>
             <button
               onClick={() => setActiveTab('gamification')}
-              className="self-start sm:self-auto py-1 px-3 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-400/30 flex items-center space-x-1 transition-colors cursor-pointer"
+              className="self-start sm:self-auto py-1 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs rounded-xl border border-amber-300 flex items-center space-x-1 transition-colors cursor-pointer"
             >
-              <i className="fa-solid fa-trophy"></i>
+              <i className="fa-solid fa-trophy text-amber-500"></i>
               <span>Ver Ranking Completo ➜</span>
             </button>
           </div>
@@ -713,31 +708,31 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               return (
                 <div
                   key={emp.id}
-                  className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-sm hover:border-slate-700 transition-colors"
+                  className="bg-white border-2 border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm hover:border-blue-300 transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-800 text-amber-300 font-black text-sm flex items-center justify-center border border-slate-700 shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#0047BA] font-black text-sm flex items-center justify-center border border-blue-200 shrink-0">
                         {emp.initials}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-extrabold text-xs text-white leading-tight truncate">{emp.name}</h4>
-                        <span className="text-[10px] text-slate-400 block truncate">{emp.department}</span>
-                        <span className="text-[9px] text-slate-500 font-mono">
+                        <h4 className="font-extrabold text-xs text-slate-900 leading-tight truncate">{emp.name}</h4>
+                        <span className="text-[10px] text-slate-500 block truncate">{emp.department}</span>
+                        <span className="text-[9px] text-slate-400 font-mono">
                           ★ {emp.rating} · {emp.totalHelpedToday} atendidos hoy
                         </span>
                       </div>
                     </div>
 
                     <span
-                      className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                      className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 border ${
                         emp.status === 'disponible'
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                           : emp.status === 'en_piso'
-                          ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                          ? 'bg-amber-50 text-amber-900 border-amber-300'
                           : emp.status === 'ocupado'
-                          ? 'bg-red-950 text-red-300 border border-red-800'
-                          : 'bg-slate-800 text-slate-400'
+                          ? 'bg-red-50 text-red-800 border-red-300'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
                       }`}
                     >
                       {emp.status}
@@ -745,68 +740,68 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </div>
 
                   {/* Resumen de Gamificación del Asesor */}
-                  <div className="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800 space-y-1.5">
+                  <div className="bg-[#F8FAFC] rounded-xl p-2.5 border border-slate-200 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-extrabold text-amber-300 font-mono">
+                      <span className="font-extrabold text-[#0047BA] font-mono">
                         🏆 {(emp.points || 0).toLocaleString()} PTS
                       </span>
-                      <span className="text-[10px] font-bold text-slate-300">
+                      <span className="text-[10px] font-bold text-slate-600">
                         {emp.levelTitle}
                       </span>
-                      <span className="text-[10px] text-orange-400 font-bold flex items-center gap-0.5">
+                      <span className="text-[10px] text-amber-600 font-bold flex items-center gap-0.5">
                         <i className="fa-solid fa-fire text-[9px]"></i>
                         {emp.streak || 0}
                       </span>
                     </div>
 
                     {/* Mini barra de progreso */}
-                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full"
+                        className="h-full bg-gradient-to-r from-[#0047BA] to-[#FFD100] rounded-full"
                         style={{ width: `${Math.max(5, progress.progressPercent)}%` }}
                       ></div>
                     </div>
                   </div>
 
                   {/* Botones de cambio de estado rápido y bono */}
-                  <div className="space-y-1.5 pt-1 border-t border-slate-900">
+                  <div className="space-y-1.5 pt-1 border-t border-slate-100">
                     <div className="grid grid-cols-4 gap-1 text-[10px] font-bold">
                       <button
                         onClick={() => handleUpdateEmpStatus(emp.id, 'disponible')}
-                        className={`py-1 rounded-lg transition-colors ${
+                        className={`py-1 rounded-lg transition-colors cursor-pointer ${
                           emp.status === 'disponible'
                             ? 'bg-emerald-600 text-white font-black'
-                            : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                         }`}
                       >
                         Libre
                       </button>
                       <button
                         onClick={() => handleUpdateEmpStatus(emp.id, 'en_piso')}
-                        className={`py-1 rounded-lg transition-colors ${
+                        className={`py-1 rounded-lg transition-colors cursor-pointer ${
                           emp.status === 'en_piso'
-                            ? 'bg-amber-600 text-white font-black'
-                            : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
+                            ? 'bg-[#FFD100] text-[#0047BA] font-black'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                         }`}
                       >
                         En Piso
                       </button>
                       <button
                         onClick={() => handleUpdateEmpStatus(emp.id, 'ocupado')}
-                        className={`py-1 rounded-lg transition-colors ${
+                        className={`py-1 rounded-lg transition-colors cursor-pointer ${
                           emp.status === 'ocupado'
                             ? 'bg-red-600 text-white font-black'
-                            : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                         }`}
                       >
                         Ocupado
                       </button>
                       <button
                         onClick={() => handleUpdateEmpStatus(emp.id, 'descanso')}
-                        className={`py-1 rounded-lg transition-colors ${
+                        className={`py-1 rounded-lg transition-colors cursor-pointer ${
                           emp.status === 'descanso'
-                            ? 'bg-slate-700 text-white font-black'
-                            : 'bg-slate-900 hover:bg-slate-850 text-slate-400'
+                            ? 'bg-slate-600 text-white font-black'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                         }`}
                       >
                         Descanso
@@ -814,17 +809,17 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between text-[10px] pt-1">
-                      <span className="text-slate-500 font-mono">Bono Rápido:</span>
+                      <span className="text-slate-400 font-mono font-bold">Bono Rápido:</span>
                       <div className="flex items-center space-x-1">
                         <button
                           onClick={() => handleAwardBonus(emp.id, 50, 'Reconocimiento en piso')}
-                          className="px-2 py-0.5 bg-slate-900 hover:bg-amber-400 hover:text-slate-950 text-amber-300 font-bold rounded-lg border border-slate-800 transition-colors"
+                          className="px-2 py-0.5 bg-slate-100 hover:bg-blue-100 text-[#0047BA] font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer"
                         >
                           +50 pts
                         </button>
                         <button
                           onClick={() => handleAwardBonus(emp.id, 100, 'Reconocimiento destacado')}
-                          className="px-2 py-0.5 bg-slate-900 hover:bg-amber-400 hover:text-slate-950 text-amber-300 font-bold rounded-lg border border-slate-800 transition-colors"
+                          className="px-2 py-0.5 bg-[#FFD100] hover:bg-amber-400 text-[#0047BA] font-black rounded-lg border border-amber-300 transition-colors cursor-pointer"
                         >
                           +100 pts
                         </button>
@@ -840,55 +835,103 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
       {/* 6. HISTORIAL DE ATENCIONES DE LA SUCURSAL */}
       {(activeTab === 'history' || activeTab === 'live') && (
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-4 sm:p-6 space-y-3 shadow-xl">
-          <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-            <i className="fa-solid fa-clock-rotate-left text-amber-400"></i>
+        <div className="bg-white border-2 border-slate-200 rounded-3xl p-4 sm:p-6 space-y-3 shadow-md">
+          <h3 className="text-sm font-black uppercase tracking-wider text-[#0047BA] flex items-center gap-2">
+            <i className="fa-solid fa-clock-rotate-left text-[#FFD100]"></i>
             <span>Registro de Solicitudes Atendidas Hoy</span>
           </h3>
 
           {alertsHistory.length === 0 ? (
-            <div className="bg-slate-950 p-6 rounded-2xl text-center text-xs text-slate-500">
+            <div className="bg-slate-50 p-6 rounded-2xl text-center text-xs text-slate-500 border border-slate-200">
               Aún no hay llamadas registradas en esta jornada.
             </div>
           ) : (
             <div className="space-y-2">
-              {alertsHistory.slice(0, 10).map((item) => (
+              {alertsHistory.slice(0, 15).map((item) => (
                 <div
                   key={item.id}
-                  className="bg-slate-950 border border-slate-800/80 rounded-2xl p-3 sm:p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                  className="bg-white border-2 border-slate-200 rounded-2xl p-3 sm:p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:border-blue-300 transition-all shadow-sm"
                 >
-                  <div>
+                  <div className="space-y-1">
                     <div className="flex items-center space-x-2">
-                      <span className="font-extrabold text-white text-xs">{item.aisle}</span>
-                      <span className="text-[10px] text-slate-500 font-mono">({item.timestamp})</span>
+                      <span className="font-extrabold text-slate-900 text-xs">{item.aisle}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">({item.timestamp})</span>
+                      {item.customerPin && (
+                        <span className="text-[9px] bg-amber-50 text-amber-900 px-1.5 py-0.2 rounded border border-amber-300 font-mono font-bold">
+                          PIN: {item.customerPin}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-[11px] text-slate-300 mt-0.5">{item.reason}</p>
+
+                    <p className="text-[11px] text-slate-700 font-medium">
+                      {item.outcomeCategory || item.resolutionNotes || item.reason}
+                    </p>
+
+                    {/* Insignias de comprobación de cumplimiento de servicio */}
+                    {item.verificationProof && (
+                      <div className="flex items-center flex-wrap gap-1.5 pt-0.5">
+                        {item.verificationProof.photoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewPhotoUrl(item.verificationProof!.photoUrl!)}
+                            className="text-[9px] bg-blue-50 hover:bg-blue-100 text-[#0047BA] px-2 py-0.5 rounded-full border border-blue-300 flex items-center gap-1 cursor-pointer transition-colors font-bold"
+                          >
+                            <i className="fa-solid fa-camera text-amber-500"></i>
+                            <span>Ver Foto de Evidencia</span>
+                          </button>
+                        )}
+
+                        {item.verificationProof.verifiedPin && (
+                          <span className="text-[9px] bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1 font-bold">
+                            <i className="fa-solid fa-key text-emerald-600"></i>
+                            <span>PIN Verificado en Pasillo ✓</span>
+                          </span>
+                        )}
+
+                        {item.verificationProof.signatureDataUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewPhotoUrl(item.verificationProof!.signatureDataUrl!)}
+                            className="text-[9px] bg-purple-50 text-purple-800 px-2 py-0.5 rounded-full border border-purple-300 flex items-center gap-1 cursor-pointer font-bold"
+                          >
+                            <i className="fa-solid fa-signature text-purple-600"></i>
+                            <span>Ver Firma de Conformidad</span>
+                          </button>
+                        )}
+
+                        {item.verificationProof.ticketFolio && (
+                          <span className="text-[9px] bg-amber-50 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300 font-mono font-bold">
+                            Folio: {item.verificationProof.ticketFolio}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex items-center space-x-3 shrink-0">
-                    <span className="text-[11px] text-amber-300">
+                  <div className="flex items-center space-x-3 shrink-0 self-end sm:self-center">
+                    <span className="text-[11px] text-[#0047BA] font-bold">
                       Atendió: <strong>{item.assignedAssociateName || 'Supervisor'}</strong>
                     </span>
                     <span
-                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 border ${
                         item.status === 'resolved'
                           ? item.outcome === 'no_resuelto'
-                            ? 'bg-red-950 text-red-400 border border-red-800'
-                            : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                            ? 'bg-red-50 text-red-700 border-red-300'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-300'
                           : item.status === 'cancelled'
-                          ? 'bg-slate-800 text-slate-400'
-                          : 'bg-amber-950 text-amber-400 border border-amber-800'
+                          ? 'bg-slate-100 text-slate-600 border-slate-300'
+                          : 'bg-amber-50 text-amber-800 border-amber-300'
                       }`}
                     >
                       {item.status === 'resolved' ? (
                         item.outcome === 'no_resuelto' ? (
                           <>
-                            <i className="fa-solid fa-circle-xmark"></i>
+                            <i className="fa-solid fa-circle-xmark text-red-500"></i>
                             <span>No Resuelto</span>
                           </>
                         ) : (
                           <>
-                            <i className="fa-solid fa-circle-check"></i>
+                            <i className="fa-solid fa-circle-check text-emerald-500"></i>
                             <span>Resuelto Exitoso</span>
                           </>
                         )
@@ -906,6 +949,57 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       )}
 
+      {/* MODAL LIGHTBOX DE FOTO / FIRMA DE EVIDENCIA */}
+      {previewPhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md animate-in fade-in"
+          onClick={() => setPreviewPhotoUrl(null)}
+        >
+          <div
+            className="bg-white text-slate-900 p-4 sm:p-5 rounded-3xl max-w-lg w-full space-y-3 shadow-2xl border-2 border-[#0047BA]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+              <div className="flex items-center space-x-2">
+                <span className="w-6 h-6 rounded-lg bg-[#FFD100] text-[#0047BA] flex items-center justify-center text-xs font-black">
+                  <i className="fa-solid fa-camera"></i>
+                </span>
+                <h4 className="font-black text-sm text-[#0047BA]">
+                  Evidencia de Servicio en Piso Coppel
+                </h4>
+              </div>
+              <button
+                onClick={() => setPreviewPhotoUrl(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 font-bold flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-1 border">
+              <img
+                src={previewPhotoUrl}
+                alt="Evidencia en piso"
+                className="max-h-80 w-auto object-contain rounded-xl"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-slate-500 font-medium">
+                ✓ Comprobante verificado por protocolo de tienda
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewPhotoUrl(null)}
+                className="py-2 px-4 bg-[#0047BA] hover:bg-[#003899] text-white font-bold rounded-xl text-xs cursor-pointer shadow"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE INSPECCIÓN Y RESOLUCIÓN (SÍ SE PUDO RESOLVER / NO SE PUDO RESOLVER) */}
       <ResolutionOutcomeModal
         isOpen={isOutcomeModalOpen}
@@ -913,6 +1007,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         alert={activeCall}
         onConfirmOutcome={handleConfirmOutcome}
         roleTitle="Supervisor de Tienda"
+        advisorName="Supervisor Coppel"
       />
     </div>
   );
