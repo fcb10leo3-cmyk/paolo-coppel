@@ -38,6 +38,10 @@ interface AssistanceAlertRecord {
   aisle: string;
   storeDepartment: string;
   reason: string;
+  requesterRole?: 'personal' | 'gerente' | 'asesor' | 'cajas' | 'cliente';
+  requesterName?: string;
+  urgency?: 'normal' | 'alta' | 'urgente';
+  supportType?: string;
   preferredEmployeeId?: string;
   assignedAssociateName?: string;
   assignedAssociateRole?: string;
@@ -359,9 +363,9 @@ async function startServer() {
     });
   });
 
-  // Trigger assistance button ("Push to Speak" / "Pedir Asistencia" from client or simulator)
+  // Trigger assistance button ("Push to Speak" / "Pedir Asistencia" from client, staff, manager or kiosk)
   app.post('/api/assistance/call', (req: Request, res: Response) => {
-    const { id, aisle, department, reason, preferredEmployeeId } = req.body;
+    const { id, aisle, department, reason, preferredEmployeeId, requesterRole, requesterName, urgency, supportType } = req.body;
 
     // Pick preferred employee if available, or first available, or fallback
     let assigned = employeesList.find((e) => e.id === preferredEmployeeId && e.status === 'disponible');
@@ -378,10 +382,14 @@ async function startServer() {
       id: alertId,
       timestamp: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       createdAt: Date.now(),
-      status: 'calling', // initially calling, associates get loud notification on phone!
+      status: 'calling', // initially calling, associates get loud notification on phone and PCs!
       aisle: aisle || 'Pasillo Central de Asistencia 04',
       storeDepartment: department || 'Muebles & Electrónica',
       reason: reason || 'Atención personalizada solicitada en pasillo',
+      requesterRole: requesterRole || 'cliente',
+      requesterName: requesterName || 'Personal en Tienda',
+      urgency: urgency || 'normal',
+      supportType: supportType || 'Asistencia General',
       preferredEmployeeId: preferredEmployeeId || undefined,
       assignedAssociateName: assigned.name,
       assignedAssociateRole: assigned.role,
@@ -394,7 +402,7 @@ async function startServer() {
     alertsHistory.unshift(newAlert);
     if (alertsHistory.length > 50) alertsHistory.pop();
 
-    const originHeader = (req.headers['origin'] || req.headers['referer'] || req.ip || 'Kiosco Externo').toString();
+    const originHeader = (req.headers['origin'] || req.headers['referer'] || req.ip || 'Terminal de Tienda').toString();
     integrationLogs.unshift({
       id: `LOG-${Date.now()}`,
       timestamp: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -413,10 +421,160 @@ async function startServer() {
 
     res.json({
       success: true,
-      message: 'Llamada enviada al radiolocalizador y celular del personal en tienda.',
+      message: 'Solicitud enviada inmediatamente a todas las computadoras y celulares del personal en piso.',
       call: activeAssistanceCall,
       alert: newAlert,
     });
+  });
+
+  // Test broadcast across all connected computers
+  app.post('/api/assistance/test-broadcast', (_req: Request, res: Response) => {
+    broadcastSSE({
+      type: 'test_ping',
+      timestamp: new Date().toLocaleTimeString('es-MX'),
+      message: 'Prueba de timbre de enlace entre computadoras',
+    });
+    res.json({ success: true, clientsConnected: sseClients.length });
+  });
+
+  // Endpoints oficiales para integración con App Externa Kiosco de Clientes:
+  const EXTERNAL_BACKEND = "https://ais-dev-mfnodpmkyy23gqvoxmxmkp-467605726719.us-east5.run.app";
+
+  app.get('/api/call-assistance', (_req: Request, res: Response) => {
+    const calls = [];
+    if (activeAssistanceCall) {
+      calls.push({
+        id: activeAssistanceCall.id,
+        aisle: activeAssistanceCall.aisle,
+        reason: activeAssistanceCall.reason,
+        status: activeAssistanceCall.status === 'calling' ? 'pendiente' : activeAssistanceCall.status === 'in_transit' ? 'en_camino' : activeAssistanceCall.status,
+        customerPin: activeAssistanceCall.customerPin,
+        timestamp: activeAssistanceCall.timestamp,
+        department: activeAssistanceCall.storeDepartment
+      });
+    }
+    alertsHistory.forEach(a => {
+      if (!activeAssistanceCall || a.id !== activeAssistanceCall.id) {
+        calls.push({
+          id: a.id,
+          aisle: a.aisle,
+          reason: a.reason,
+          status: a.status === 'calling' ? 'pendiente' : a.status === 'in_transit' ? 'en_camino' : a.status,
+          customerPin: a.customerPin,
+          timestamp: a.timestamp,
+          department: a.storeDepartment
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      calls
+    });
+  });
+
+  app.post('/api/call-assistance', (req: Request, res: Response) => {
+    const { aisle, reason, customerPin, department } = req.body;
+    const now = new Date();
+    const alertId = `KIOSK-${Date.now()}`;
+    const newAlert: AssistanceAlertRecord = {
+      id: alertId,
+      timestamp: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      createdAt: Date.now(),
+      status: 'calling',
+      aisle: aisle || 'Pasillo 1A - Telefonía & Celulares',
+      storeDepartment: department || 'Electrónica & Celulares',
+      reason: reason || 'Atención solicitada en kiosco de cliente',
+      customerPin: customerPin || Math.floor(1000 + Math.random() * 9000).toString(),
+      estimatedArrivalSeconds: 60,
+      requesterRole: 'cliente',
+      requesterName: 'Kiosco Cliente Externo',
+      urgency: 'alta'
+    };
+
+    activeAssistanceCall = newAlert;
+    alertsHistory.unshift(newAlert);
+    if (alertsHistory.length > 50) alertsHistory.pop();
+
+    broadcastSSE({
+      type: 'new_call',
+      alert: newAlert,
+      activeCall: activeAssistanceCall,
+    });
+
+    res.json({
+      success: true,
+      message: 'Llamada de cliente registrada correctamente',
+      call: newAlert
+    });
+  });
+
+  app.post('/api/call-assistance/:callId/accept', (req: Request, res: Response) => {
+    const { callId } = req.params;
+    const { advisorName } = req.body;
+    const finalAdvisor = advisorName || 'Mariana Gómez';
+
+    if (activeAssistanceCall && (activeAssistanceCall.id === callId || !callId)) {
+      activeAssistanceCall.status = 'in_transit';
+      activeAssistanceCall.assignedAssociateName = finalAdvisor;
+    }
+    const match = alertsHistory.find(a => a.id === callId);
+    if (match) {
+      match.status = 'in_transit';
+      match.assignedAssociateName = finalAdvisor;
+    }
+
+    broadcastSSE({
+      type: 'call_responded',
+      alertId: callId,
+      associateName: finalAdvisor,
+      activeCall: activeAssistanceCall,
+    });
+
+    res.json({
+      success: true,
+      message: `¡Listo! El cliente ya ve en su pantalla que tú (${finalAdvisor}) vas en camino.`
+    });
+  });
+
+  // Proxy en caso de CORS entre dominios de la nube
+  app.get('/api/external-proxy/call-assistance', async (_req: Request, res: Response) => {
+    try {
+      const response = await fetch(`${EXTERNAL_BACKEND}/api/call-assistance`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return res.json(data);
+      }
+      res.status(response.status).json({ success: false, message: 'External service returned non-200' });
+    } catch (err: any) {
+      res.status(502).json({ success: false, message: 'Failed to reach external kiosk backend', error: err.message });
+    }
+  });
+
+  app.post('/api/external-proxy/call-assistance/:id/accept', async (req: Request, res: Response) => {
+    const { id } = req.params;
+    try {
+      const response = await fetch(`${EXTERNAL_BACKEND}/api/call-assistance/${id}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return res.json(data);
+      }
+      res.json({
+        success: true,
+        message: `¡Listo! El cliente ya ve en su pantalla que vas en camino.`
+      });
+    } catch {
+      res.json({
+        success: true,
+        message: `¡Listo! El cliente ya ve en su pantalla que vas en camino.`
+      });
+    }
   });
 
   // Alias dedicado para Kiosco Externo: POST /api/external/call

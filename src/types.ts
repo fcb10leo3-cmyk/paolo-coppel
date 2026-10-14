@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'staff';
+export type UserRole = 'admin' | 'staff' | 'requester';
 
 export type ResolutionOutcome = 'resuelto_exitoso' | 'no_resuelto';
 
@@ -50,7 +50,10 @@ export interface AssistanceAlert {
   aisle: string;
   storeDepartment: string;
   reason: string;
-  urgency?: 'normal' | 'alta' | 'vip';
+  requesterRole?: 'personal' | 'gerente' | 'asesor' | 'cajas' | 'cliente';
+  requesterName?: string;
+  urgency?: 'normal' | 'alta' | 'urgente';
+  supportType?: string;
   preferredEmployeeId?: string;
   assignedAssociateName?: string;
   assignedAssociateRole?: string;

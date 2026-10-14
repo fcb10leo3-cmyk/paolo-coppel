@@ -1,35 +1,42 @@
 import React, { useState } from 'react';
 import { UserRole } from './types';
-import { AdminDashboardView } from './components/AdminDashboardView';
 import { StaffAttendantView } from './components/StaffAttendantView';
+import { AdminDashboardView } from './components/AdminDashboardView';
+import { RequesterKioskView } from './components/RequesterKioskView';
 import { ShareDevicesModal } from './components/ShareDevicesModal';
+import { RequestSupportModal } from './components/RequestSupportModal';
 
 export default function App() {
-  // Detectar rol inicial según parámetro URL (?role=admin o ?role=staff) o por defecto Administrador
+  // En esta app y versión: Modo Asesor de Piso por defecto
   const [activeRole, setActiveRole] = useState<UserRole>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const roleParam = params.get('role');
-      if (roleParam === 'staff' || roleParam === 'personal') return 'staff';
-      if (roleParam === 'admin' || roleParam === 'supervisor') return 'admin';
+      if (roleParam === 'admin' || roleParam === 'supervisor' || roleParam === 'gerente') return 'admin';
+      if (roleParam === 'requester' || roleParam === 'solicitar' || roleParam === 'caja') return 'requester';
     }
-    return 'admin';
+    return 'staff'; // "en esta app y versión solo asesor, quedemonos aquí"
   });
 
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
-  const [shareModalTab, setShareModalTab] = useState<'staff' | 'admin' | 'kiosk_api' | 'deploy'>('staff');
+  const [shareModalTab, setShareModalTab] = useState<'multi_pc' | 'staff' | 'admin' | 'requester' | 'kiosk_api' | 'deploy'>('staff');
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState<boolean>(false);
 
-  const handleOpenShareModal = (tab: 'staff' | 'admin' | 'kiosk_api' | 'deploy' = 'staff') => {
+  const handleOpenShareModal = (tab: 'multi_pc' | 'staff' | 'admin' | 'requester' | 'kiosk_api' | 'deploy' = 'staff') => {
     setShareModalTab(tab);
     setIsShareModalOpen(true);
   };
 
+  const handleOpenRequestModal = () => {
+    setIsRequestModalOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 flex flex-col justify-start relative overflow-x-hidden selection:bg-[#FFD100] selection:text-[#0047BA]">
-      {/* 1. APP HEADER ESTILO APLICACIÓN COPPEL COLABORADORES (NO PÁGINA WEB) */}
+      {/* 1. APP HEADER OFICIAL COPPEL ASESORES DE PISO */}
       <header className="w-full bg-[#0047BA] text-white shadow-md sticky top-0 z-40 border-b-2 border-[#FFD100]">
-        <div className="max-w-5xl mx-auto px-3 sm:px-5 py-2.5 flex items-center justify-between gap-3">
-          {/* IDENTIDAD DE LA APP COPPEL */}
+        <div className="max-w-4xl mx-auto px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 sm:gap-3">
+          {/* IDENTIDAD DE LA APP COPPEL ASESORES */}
           <div className="flex items-center space-x-2.5 shrink-0">
             {/* Ícono Oficial: 3 puntos amarillos Coppel */}
             <div className="flex items-center space-x-1 bg-white/15 px-2 py-1 rounded-xl border border-white/20 shadow-sm">
@@ -44,73 +51,60 @@ export default function App() {
                   Coppel
                 </span>
                 <span className="bg-[#FFD100] text-[#0047BA] text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-sm">
-                  App Piso
+                  Asesor Piso
                 </span>
               </div>
               <div className="flex items-center space-x-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse"></span>
                 <span className="text-[10px] text-blue-100 font-medium leading-none">
-                  Red de Asistencia en Tienda
+                  App de Asesores · Enlace con Kiosco
                 </span>
               </div>
             </div>
           </div>
 
-          {/* ACCIONES DE APP: SELECTOR DE ROL Y CONEXIÓN */}
-          <div className="flex items-center space-x-2 shrink-0">
-            {/* BOTÓN CONECTAR / QR */}
+          {/* ACCIONES DE APP ASESOR */}
+          <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+            {/* BOTÓN SOLICITAR APOYO / REFUERZO A COMPAÑERO O GERENTE */}
             <button
-              onClick={() => handleOpenShareModal('kiosk_api')}
-              className="py-1.5 px-2.5 sm:px-3 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-bold border border-white/20 shadow flex items-center space-x-1.5 transition-all active:scale-95 cursor-pointer"
-              title="Vincular con Kiosco o compartir códigos QR para celular"
+              onClick={handleOpenRequestModal}
+              className="py-1.5 px-2.5 sm:px-3 bg-[#FFD100] hover:bg-amber-300 active:scale-95 text-[#0047BA] rounded-xl text-xs font-black shadow-md border border-white/30 flex items-center space-x-1.5 transition-all cursor-pointer"
+              title="Solicitar apoyo o refuerzo a compañeros o al gerente"
             >
-              <i className="fa-solid fa-qrcode text-[#FFD100]"></i>
-              <span className="hidden sm:inline">QR / Vincular</span>
-              <span className="sm:hidden">QR</span>
+              <i className="fa-solid fa-bullhorn text-[#0047BA]"></i>
+              <span className="hidden sm:inline">Pedir Apoyo</span>
+              <span className="sm:hidden">Apoyo</span>
             </button>
 
-            {/* SELECTOR RÁPIDO DE MODO EN LA APP: SUPERVISOR (ADMIN) VS ASESOR (STAFF) */}
-            <div className="flex items-center bg-[#003899] p-1 rounded-2xl border border-white/20 shadow-inner">
-              <button
-                onClick={() => setActiveRole('staff')}
-                className={`py-1.5 px-2.5 sm:px-3 rounded-xl text-xs transition-all flex items-center space-x-1 cursor-pointer ${
-                  activeRole === 'staff'
-                    ? 'bg-[#FFD100] text-[#0047BA] shadow font-black'
-                    : 'text-blue-100 hover:text-white font-bold'
-                }`}
-                title="Modo Asesor en Piso (Atender clientes y registrar puntos)"
-              >
-                <i className="fa-solid fa-headset text-xs"></i>
-                <span>Asesor</span>
-              </button>
-
-              <button
-                onClick={() => setActiveRole('admin')}
-                className={`py-1.5 px-2.5 sm:px-3 rounded-xl text-xs transition-all flex items-center space-x-1 cursor-pointer ${
-                  activeRole === 'admin'
-                    ? 'bg-[#FFD100] text-[#0047BA] shadow font-black'
-                    : 'text-blue-100 hover:text-white font-bold'
-                }`}
-                title="Modo Supervisor / Tablero de tienda"
-              >
-                <i className="fa-solid fa-shield-halved text-xs"></i>
-                <span>Admin</span>
-              </button>
-            </div>
+            {/* BOTÓN QR PARA ABRIR EN EL CELULAR */}
+            <button
+              onClick={() => handleOpenShareModal('staff')}
+              className="py-1.5 px-2.5 sm:px-3 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-bold border border-white/20 shadow flex items-center space-x-1.5 transition-all active:scale-95 cursor-pointer"
+              title="Escanear código QR para abrir en tu celular"
+            >
+              <i className="fa-solid fa-qrcode text-[#FFD100]"></i>
+              <span className="hidden md:inline">QR Celular</span>
+              <span className="md:hidden">QR</span>
+            </button>
           </div>
         </div>
       </header>
 
-      {/* 2. CONTENIDO PRINCIPAL DE LA APP (CONSERVA POSICIONES Y DISEÑO) */}
-      <main className="flex-1 w-full max-w-5xl mx-auto p-2 sm:p-4 pb-24 sm:pb-12">
+      {/* 2. CONTENIDO PRINCIPAL: VISTA DE ASESOR EN PISO */}
+      <main className="flex-1 w-full max-w-4xl mx-auto p-2 sm:p-4 pb-24 sm:pb-12">
         {activeRole === 'admin' ? (
-          /* VISTA 1: TABLERO DEL ADMINISTRADOR (SUPERVISOR EN PISO) */
           <AdminDashboardView
             onSwitchToStaffRole={() => setActiveRole('staff')}
             onOpenShareModal={handleOpenShareModal}
           />
+        ) : activeRole === 'requester' ? (
+          <RequesterKioskView
+            onSwitchToAdminRole={() => setActiveRole('admin')}
+            onSwitchToStaffRole={() => setActiveRole('staff')}
+            onOpenShareModal={handleOpenShareModal}
+          />
         ) : (
-          /* VISTA 2: TERMINAL DEL ASESOR EN PISO */
+          /* MODO PRINCIPAL: ASESOR DE PISO */
           <StaffAttendantView
             onSwitchToAdminRole={() => setActiveRole('admin')}
             onOpenShareModal={handleOpenShareModal}
@@ -118,12 +112,12 @@ export default function App() {
         )}
       </main>
 
-      {/* 3. BARRA DE NAVEGACIÓN INFERIOR ESTILO APP NATIVA (MÓVIL / PANTALLA TÁCTIL) */}
+      {/* 3. BARRA DE NAVEGACIÓN INFERIOR ESTILO APP MÓVIL ASESOR */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-white border-t-2 border-[#0047BA] shadow-2xl z-40 px-3 py-1.5 flex items-center justify-around">
         <button
           type="button"
           onClick={() => setActiveRole('staff')}
-          className={`flex-1 py-1 px-2 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
+          className={`flex-1 py-1 px-1 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
             activeRole === 'staff'
               ? 'text-[#0047BA] font-black'
               : 'text-slate-500 font-bold hover:text-slate-700'
@@ -134,39 +128,40 @@ export default function App() {
           }`}>
             <i className="fa-solid fa-headset"></i>
           </div>
-          <span className="text-[10px] mt-0.5">Asesor</span>
+          <span className="text-[10px] mt-0.5">Mi Turno</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveRole('admin')}
-          className={`flex-1 py-1 px-2 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
-            activeRole === 'admin'
-              ? 'text-[#0047BA] font-black'
-              : 'text-slate-500 font-bold hover:text-slate-700'
-          }`}
+          onClick={handleOpenRequestModal}
+          className="flex-1 py-1 px-1 rounded-xl flex flex-col items-center justify-center text-[#0047BA] font-black hover:text-blue-800 transition-all cursor-pointer"
         >
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
-            activeRole === 'admin' ? 'bg-[#0047BA] text-[#FFD100] shadow' : 'bg-slate-100'
-          }`}>
-            <i className="fa-solid fa-shield-halved"></i>
+          <div className="w-8 h-8 rounded-xl bg-[#FFD100] text-[#0047BA] flex items-center justify-center text-sm shadow border border-amber-400">
+            <i className="fa-solid fa-bullhorn"></i>
           </div>
-          <span className="text-[10px] mt-0.5">Supervisor</span>
+          <span className="text-[10px] mt-0.5">Pedir Apoyo</span>
         </button>
 
         <button
           type="button"
-          onClick={() => handleOpenShareModal('kiosk_api')}
-          className="flex-1 py-1 px-2 rounded-xl flex flex-col items-center justify-center text-slate-500 font-bold hover:text-[#0047BA] transition-all cursor-pointer"
+          onClick={() => handleOpenShareModal('staff')}
+          className="flex-1 py-1 px-1 rounded-xl flex flex-col items-center justify-center text-slate-500 font-bold hover:text-[#0047BA] transition-all cursor-pointer"
         >
           <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-sm text-[#0047BA]">
             <i className="fa-solid fa-qrcode"></i>
           </div>
-          <span className="text-[10px] mt-0.5">Vincular QR</span>
+          <span className="text-[10px] mt-0.5">QR Celular</span>
         </button>
       </nav>
 
-      {/* 4. MODAL DE VINCULACIÓN QR / CONEXIÓN KIOSCO */}
+      {/* 4. MODAL DE SOLICITUD DE APOYO A PISO */}
+      <RequestSupportModal
+        isOpen={isRequestModalOpen}
+        onClose={() => setIsRequestModalOpen(false)}
+        defaultRequester="asesor"
+      />
+
+      {/* 5. MODAL DE VINCULACIÓN QR / CONEXIÓN MULTI-DISPOSITIVO */}
       <ShareDevicesModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}

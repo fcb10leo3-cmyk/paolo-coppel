@@ -7,6 +7,7 @@ import { ResolutionOutcomeModal } from './ResolutionOutcomeModal';
 import { AdvisorGamificationRoad } from './AdvisorGamificationRoad';
 import { PointsCelebrationModal } from './PointsCelebrationModal';
 import { calculatePointsForAssistance } from '../services/gamification';
+import { simularLlamadaKioscoCliente, EXTERNAL_KIOSK_BASE_URL } from '../services/externalKioskService';
 
 interface StaffAttendantViewProps {
   onSwitchToAdminRole?: () => void;
@@ -82,9 +83,17 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
         setHasArrivedAtAisle(false);
         if (isAudioEnabled) {
           soundEffects.playEmergencyAlert();
-          voice.speak(`¡Atención ${myEmployee?.name.split(' ')[0]}! Solicitud en ${activeCall.aisle}.`);
+          const originPhrase =
+            activeCall.requesterRole === 'gerente'
+              ? 'Solicitud urgente de Gerencia'
+              : activeCall.requesterRole === 'cajas'
+              ? 'Personal de Cajas solicita refuerzo'
+              : activeCall.requesterRole === 'asesor'
+              ? 'Un compañero asesor solicita apoyo'
+              : 'Nueva solicitud en piso';
+          voice.speak(`¡Atención ${myEmployee?.name.split(' ')[0]}! ${originPhrase} en ${activeCall.aisle}.`);
           soundEffects.showBrowserNotification(
-            '🚨 Asistencia Coppel en Pasillo',
+            `🚨 ${originPhrase}`,
             `${activeCall.reason} en ${activeCall.aisle}`
           );
         }
@@ -198,19 +207,43 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     await staffSync.updateEmployeeStatus(myEmployee.id, status);
   };
 
-  // Simular llamada de prueba en 1 clic
+  // Simular llamada de prueba desde el Kiosco de Clientes (con PIN y pasillo)
   const handleSimulateTestCall = async () => {
     soundEffects.playSuccessChime();
-    await staffSync.triggerCall({
-      aisle: 'Pasillo 2 - Celulares & Electrónica',
-      department: 'Telefonía Coppel',
-      reason: 'Cliente solicita información sobre financiamiento de Celular Samsung',
-      preferredEmployeeId: myEmployee.id,
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    console.log("Nueva llamada de cliente:");
+    console.log("- ID Llamada:", `KIOSK-${Date.now()}`);
+    console.log("- Lugar / Pasillo:", 'Pasillo 1A - Telefonía & Celulares');
+    console.log("- Tipo de Asistencia:", 'Cliente solicita ver celulares Samsung en vitrina');
+    console.log("- PIN del Cliente:", pin);
+
+    await simularLlamadaKioscoCliente({
+      aisle: 'Pasillo 1A - Telefonía & Celulares',
+      reason: 'Cliente solicita ver celulares Samsung en vitrina',
+      customerPin: pin,
     });
   };
 
   return (
     <div className="w-full max-w-xl md:max-w-2xl mx-auto min-h-screen bg-[#F4F6F9] text-slate-800 shadow-2xl flex flex-col justify-start select-none relative sm:rounded-3xl overflow-hidden pb-12 border border-slate-200">
+      {/* 0. BARRA DE ENLACE ACTIVO CON KIOSCO DE CLIENTES */}
+      <div className="bg-white border-b-2 border-slate-200 px-3.5 py-1.5 flex items-center justify-between text-[11px] shadow-sm">
+        <div className="flex items-center space-x-1.5 min-w-0">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+          <span className="text-slate-600 font-bold truncate">
+            Enlazado a Kiosco Clientes: <strong className="text-[#0047BA] font-mono text-[10px]">ais-dev-mfnodpm...</strong>
+          </span>
+        </div>
+        <button
+          onClick={handleSimulateTestCall}
+          className="shrink-0 bg-[#FFD100] hover:bg-amber-400 active:scale-95 text-[#0047BA] font-black px-2.5 py-1 rounded-lg text-[10px] border border-amber-300 shadow-sm cursor-pointer transition-all flex items-center space-x-1"
+          title="Generar una llamada de prueba para ver cómo entra la alerta con PIN y sonido"
+        >
+          <i className="fa-solid fa-flask"></i>
+          <span>Probar Kiosco</span>
+        </button>
+      </div>
+
       {/* 1. BARRA SUPERIOR DE LA APP COPPEL ASESOR */}
       <div className="bg-[#0047BA] px-3.5 sm:px-4 py-2 text-white flex items-center justify-between text-xs border-b border-blue-600/40">
         <div className="flex items-center space-x-2">
@@ -463,12 +496,38 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                   </div>
 
                   <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-                    <span className="text-[10px] text-slate-400 uppercase font-black block tracking-wider">
-                      Motivo de la Solicitud:
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400 uppercase font-black block tracking-wider">
+                        Motivo de la Solicitud:
+                      </span>
+                      {activeCall.requesterRole && (
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                          activeCall.requesterRole === 'gerente'
+                            ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                            : activeCall.requesterRole === 'cajas'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : activeCall.requesterRole === 'asesor'
+                            ? 'bg-blue-100 text-[#0047BA] border border-blue-300'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {activeCall.requesterRole === 'gerente' && '👔 De Gerencia'}
+                          {activeCall.requesterRole === 'cajas' && '🛒 De Cajas Express'}
+                          {activeCall.requesterRole === 'asesor' && '🎧 De Asesor Compañero'}
+                          {activeCall.requesterRole === 'personal' && '👤 Personal en Tienda'}
+                          {activeCall.requesterRole === 'cliente' && '👤 Kiosco Cliente'}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs sm:text-sm font-black text-slate-800">
                       "{activeCall.reason}"
                     </p>
+                    {activeCall.urgency === 'urgente' && (
+                      <div className="pt-1">
+                        <span className="text-[10px] bg-red-600 text-white font-black px-2 py-0.5 rounded-md animate-pulse">
+                          🚨 PRIORIDAD ALTA / ATENCIÓN INMEDIATA
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* PIN del cliente para verificación rápida */}

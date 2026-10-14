@@ -1,5 +1,6 @@
 import { Employee, AssistanceAlert, ResolutionOutcome, AssistanceVerificationProof } from '../types';
 import { getGamificationLevel, calculatePointsForAssistance } from './gamification';
+import { obtenerSolicitudesDeClientes, confirmarQueVoyEnCamino } from './externalKioskService';
 
 export const INITIAL_EMPLOYEES: Employee[] = [
   {
@@ -121,6 +122,8 @@ class StaffSyncService {
   private channel: BroadcastChannel | null = null;
   private listeners: Set<(state: StaffState) => void> = new Set();
   private resolvedAlertIds: Set<string> = new Set();
+  private eventSource: EventSource | null = null;
+  private isConnectedToServer: boolean = false;
 
   constructor() {
     this.resolvedAlertIds = this.loadResolvedIds();
@@ -151,7 +154,125 @@ class StaffSyncService {
           }
         }
       });
+
+      // Iniciar conexión permanente en tiempo real (Server-Sent Events) para sincronizar entre diferentes computadoras
+      this.initRealtimeStream();
     }
+  }
+
+  private initRealtimeStream() {
+    if (typeof window === 'undefined' || !('EventSource' in window)) return;
+    try {
+      if (this.eventSource) {
+        this.eventSource.close();
+      }
+      this.eventSource = new EventSource('/api/assistance/stream');
+      this.eventSource.onopen = () => {
+        this.isConnectedToServer = true;
+      };
+      this.eventSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          this.handleSSEEvent(data);
+        } catch {
+          // ignore
+        }
+      };
+      this.eventSource.onerror = () => {
+        this.isConnectedToServer = false;
+      };
+    } catch {
+      // ignore
+    }
+  }
+
+  private handleSSEEvent(data: any) {
+    if (!data || !data.type) return;
+
+    if (data.type === 'init') {
+      if (data.activeCall && !this.resolvedAlertIds.has(data.activeCall.id)) {
+        this.state.activeCall = data.activeCall;
+      } else if (!data.activeCall) {
+        this.state.activeCall = null;
+      }
+      if (Array.isArray(data.employees)) {
+        this.mergeEmployees(data.employees);
+      }
+      if (Array.isArray(data.history)) {
+        this.state.history = data.history;
+      }
+      this.saveState();
+    } else if (data.type === 'new_call') {
+      if (data.alert && !this.resolvedAlertIds.has(data.alert.id)) {
+        this.state.activeCall = data.alert;
+        this.state.history = [data.alert, ...this.state.history.filter((a) => a.id !== data.alert.id)].slice(0, 40);
+        this.saveState();
+      }
+    } else if (data.type === 'call_responded') {
+      if (this.state.activeCall && (this.state.activeCall.id === data.alertId || !data.alertId)) {
+        this.state.activeCall.status = 'in_transit';
+        this.state.activeCall.assignedAssociateName = data.associateName;
+      }
+      this.saveState();
+    } else if (data.type === 'call_resolved') {
+      if (data.alertId) {
+        this.saveResolvedId(data.alertId);
+      }
+      this.state.activeCall = null;
+      if (Array.isArray(data.employees)) {
+        this.mergeEmployees(data.employees);
+      }
+      this.saveState();
+    } else if (data.type === 'call_cancelled') {
+      this.state.activeCall = null;
+      this.saveState();
+    } else if (data.type === 'call_rejected') {
+      if (this.state.activeCall && (this.state.activeCall.id === data.alertId || !data.alertId)) {
+        this.state.activeCall.status = 'calling';
+        this.state.activeCall.assignedAssociateId = undefined;
+        this.state.activeCall.assignedAssociateName = undefined;
+        this.state.activeCall.lastRejectionReason = data.reason;
+        this.state.activeCall.lastRejectedByName = data.employeeName;
+      }
+      if (Array.isArray(data.employees)) {
+        this.mergeEmployees(data.employees);
+      }
+      this.saveState();
+    } else if (data.type === 'call_assigned') {
+      if (this.state.activeCall && (this.state.activeCall.id === data.alertId || !data.alertId)) {
+        this.state.activeCall.assignedAssociateId = data.employeeId;
+        this.state.activeCall.assignedAssociateName = data.employeeName;
+        this.state.activeCall.status = 'calling';
+      }
+      this.saveState();
+    } else if (data.type === 'employee_status_changed' || data.type === 'bonus_awarded') {
+      if (Array.isArray(data.employees)) {
+        this.mergeEmployees(data.employees);
+        this.saveState();
+      }
+    }
+  }
+
+  private mergeEmployees(remoteEmployees: any[]) {
+    this.state.employees = remoteEmployees.map((emp: any) => {
+      const localEmp = this.state.employees.find((e) => e.id === emp.id) || INITIAL_EMPLOYEES.find((e) => e.id === emp.id);
+      const points = typeof emp.points === 'number' ? emp.points : (localEmp?.points ?? 1000);
+      const lvl = getGamificationLevel(points);
+      return {
+        ...localEmp,
+        ...emp,
+        points,
+        successfulAssistsToday: typeof emp.successfulAssistsToday === 'number' ? emp.successfulAssistsToday : (localEmp?.successfulAssistsToday ?? emp.totalHelpedToday ?? 10),
+        unsuccessfulAssistsToday: typeof emp.unsuccessfulAssistsToday === 'number' ? emp.unsuccessfulAssistsToday : (localEmp?.unsuccessfulAssistsToday ?? 0),
+        streak: typeof emp.streak === 'number' ? emp.streak : (localEmp?.streak ?? 3),
+        level: lvl.level,
+        levelTitle: lvl.title,
+      };
+    });
+  }
+
+  public getIsConnectedToServer(): boolean {
+    return this.isConnectedToServer;
   }
 
   private loadResolvedIds(): Set<string> {
@@ -305,6 +426,35 @@ class StaffSyncService {
           }
           this.saveState();
 
+          // Consultar solicitudes periódicamente desde la app externa de Kiosco Cliente
+          try {
+            const extCalls = await obtenerSolicitudesDeClientes();
+            if (extCalls && extCalls.length > 0) {
+              const pending = extCalls.find((c: any) => !this.resolvedAlertIds.has(c.id));
+              if (pending && (!this.state.activeCall || this.state.activeCall.id !== pending.id)) {
+                const mappedAlert: AssistanceAlert = {
+                  id: pending.id,
+                  timestamp: pending.timestamp || new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+                  createdAt: Date.now(),
+                  status: 'calling',
+                  aisle: pending.aisle || 'Pasillo de Tienda',
+                  storeDepartment: pending.department || 'Piso de Venta',
+                  reason: pending.reason || 'Atención solicitada en Kiosco Cliente',
+                  customerPin: pending.customerPin,
+                  estimatedArrivalSeconds: 60,
+                  requesterRole: 'cliente',
+                  requesterName: 'Kiosco Cliente Externo',
+                  urgency: 'alta'
+                };
+                this.state.activeCall = mappedAlert;
+                this.state.history = [mappedAlert, ...this.state.history.filter(a => a.id !== mappedAlert.id)].slice(0, 40);
+                this.saveState();
+              }
+            }
+          } catch {
+            // ignore
+          }
+
           return {
             success: true,
             activeCall: this.state.activeCall,
@@ -329,12 +479,16 @@ class StaffSyncService {
     return this.fetchAlerts();
   }
 
-  // Crear nueva llamada (Simulador o cliente en pasillo)
+  // Crear nueva llamada (Personal, Gerente, Asesor o Cliente)
   public async triggerCall(payload: {
     aisle?: string;
     department?: string;
     reason?: string;
     preferredEmployeeId?: string;
+    requesterRole?: 'personal' | 'gerente' | 'asesor' | 'cajas' | 'cliente';
+    requesterName?: string;
+    urgency?: 'normal' | 'alta' | 'urgente';
+    supportType?: string;
   }): Promise<AssistanceAlert> {
     const now = new Date();
     const newAlertId = `CALL-${Date.now()}`;
@@ -357,6 +511,10 @@ class StaffSyncService {
       aisle: payload.aisle || 'Pasillo 4 - Mueblería Central',
       storeDepartment: payload.department || 'Muebles & Electrónica',
       reason: payload.reason || 'Atención personalizada solicitada en pasillo',
+      requesterRole: payload.requesterRole || 'cliente',
+      requesterName: payload.requesterName || 'Personal en Tienda',
+      urgency: payload.urgency || 'normal',
+      supportType: payload.supportType || 'Asistencia General',
       preferredEmployeeId: payload.preferredEmployeeId,
       assignedAssociateName: assigned?.name || 'Mariana Gómez',
       assignedAssociateRole: assigned?.role || 'Asesora Senior de Crédito',
@@ -386,6 +544,16 @@ class StaffSyncService {
     }
 
     return newAlert;
+  }
+
+  // Prueba de timbre de enlace entre computadoras conectadas
+  public async testBroadcastPing(): Promise<boolean> {
+    try {
+      const res = await fetch('/api/assistance/test-broadcast', { method: 'POST' });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   // ADMINISTRADOR: Asignar o redirigir a un asesor
@@ -479,12 +647,19 @@ class StaffSyncService {
 
     this.saveState();
 
+    const targetAlertId = alertId || this.state.activeCall?.id;
+
+    // Notificar a la app externa de Kiosco de Clientes
+    if (targetAlertId) {
+      confirmarQueVoyEnCamino(targetAlertId, finalName).catch(() => {});
+    }
+
     try {
       fetch('/api/assistance/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          alertId: alertId || this.state.activeCall?.id,
+          alertId: targetAlertId,
           associateId: emp?.id || 'emp-01',
           associateName: finalName,
         }),

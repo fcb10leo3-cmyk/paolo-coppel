@@ -57,9 +57,17 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         prevCallIdRef.current = activeCall.id;
         if (isAudioEnabled) {
           soundEffects.playEmergencyAlert();
-          voice.speak(`¡Atención Supervisor! Nueva solicitud de cliente en ${activeCall.aisle}.`);
+          const originPhrase =
+            activeCall.requesterRole === 'gerente'
+              ? 'Solicitud de Gerencia despachada'
+              : activeCall.requesterRole === 'cajas'
+              ? 'Personal de Cajas solicita refuerzo'
+              : activeCall.requesterRole === 'asesor'
+              ? 'Un asesor en piso solicita apoyo'
+              : 'Solicitud de atención en piso';
+          voice.speak(`¡Atención Supervisor! ${originPhrase} en ${activeCall.aisle}.`);
           soundEffects.showBrowserNotification(
-            '🚨 Alerta en Piso de Venta',
+            `🚨 ${originPhrase}`,
             `${activeCall.reason} en ${activeCall.aisle}`
           );
         }
@@ -505,15 +513,39 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </div>
 
                   <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-1 shadow-sm">
-                    <span className="text-[10px] text-slate-400 uppercase font-black block">
-                      Motivo de la Solicitud / Duda:
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400 uppercase font-black block">
+                        Motivo de la Solicitud / Duda:
+                      </span>
+                      {activeCall.requesterRole && (
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                          activeCall.requesterRole === 'gerente'
+                            ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                            : activeCall.requesterRole === 'cajas'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : activeCall.requesterRole === 'asesor'
+                            ? 'bg-blue-100 text-[#0047BA] border border-blue-300'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {activeCall.requesterRole === 'gerente' && '👔 De Gerencia'}
+                          {activeCall.requesterRole === 'cajas' && '🛒 De Cajas'}
+                          {activeCall.requesterRole === 'asesor' && '🎧 De Asesor'}
+                          {activeCall.requesterRole === 'personal' && '👤 Personal'}
+                          {activeCall.requesterRole === 'cliente' && '👤 Cliente'}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm font-extrabold text-slate-900 leading-snug">
                       "{activeCall.reason}"
                     </p>
-                    <span className="text-[10px] text-slate-400 block font-mono">
-                      Hora de llamada: {activeCall.timestamp}
-                    </span>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                      <span>Hora de llamada: {activeCall.timestamp}</span>
+                      {activeCall.urgency === 'urgente' && (
+                        <span className="text-red-600 font-black font-sans uppercase animate-pulse">
+                          🚨 PRIORIDAD ALTA
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
