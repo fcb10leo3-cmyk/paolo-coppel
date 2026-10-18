@@ -7,7 +7,12 @@ import { ResolutionOutcomeModal } from './ResolutionOutcomeModal';
 import { AdvisorGamificationRoad } from './AdvisorGamificationRoad';
 import { PointsCelebrationModal } from './PointsCelebrationModal';
 import { calculatePointsForAssistance } from '../services/gamification';
-import { simularLlamadaKioscoCliente, EXTERNAL_KIOSK_BASE_URL } from '../services/externalKioskService';
+import {
+  simularLlamadaKioscoCliente,
+  firebaseConfig,
+  suscribirAsistenciasPendientes,
+  confirmarQueVoyEnCamino,
+} from '../services/externalKioskService';
 
 interface StaffAttendantViewProps {
   onSwitchToAdminRole?: () => void;
@@ -19,6 +24,10 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
   onOpenShareModal,
 }) => {
   const [activeCall, setActiveCall] = useState<AssistanceAlert | null>(null);
+  const [pendingCalls, setPendingCalls] = useState<AssistanceAlert[]>([]);
+  const [inTransitCall, setInTransitCall] = useState<AssistanceAlert | null>(null);
+  const inTransitCallRef = useRef<AssistanceAlert | null>(null);
+
   const [employees, setEmployees] = useState<Employee[]>(() => {
     const list = staffSync.getState()?.employees;
     return list && list.length > 0 ? list : INITIAL_EMPLOYEES;
@@ -50,65 +59,91 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
   const prevCallIdRef = useRef<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sincronización en tiempo real
+  // Sincronización en tiempo real vía Firebase Firestore (onSnapshot) y staffSync
   useEffect(() => {
-    const unsubscribe = staffSync.subscribe((state) => {
-      setActiveCall(state.activeCall);
-      setEmployees(state.employees);
-      setAlertsHistory(state.history);
+    // 1. Escuchar asistencias en tiempo real directamente desde Firestore
+    const unsubFirestore = suscribirAsistenciasPendientes((pendientes) => {
+      setPendingCalls(pendientes);
+
+      // Si ya tenemos una llamada que estamos atendiendo activamente en tránsito, mantenerla
+      if (inTransitCallRef.current) {
+        return;
+      }
+
+      // Si hay llamadas pendientes, la llamada en pantalla es la más reciente
+      if (pendientes.length > 0) {
+        const topPending = pendientes[0];
+        setActiveCall(topPending);
+        staffSync.setActiveCall(topPending);
+      } else {
+        setActiveCall(null);
+        staffSync.setActiveCall(null);
+      }
+    });
+
+    // 2. Sincronizar catálogo de colaboradores y métricas locales
+    const unsubscribeSync = staffSync.subscribe((state) => {
+      if (state.employees && state.employees.length > 0) {
+        setEmployees(state.employees);
+      }
+      if (state.history) {
+        setAlertsHistory(state.history);
+      }
     });
 
     staffSync.fetchAlerts();
-    const interval = setInterval(() => staffSync.fetchAlerts(), 2000);
 
     return () => {
-      unsubscribe();
-      clearInterval(interval);
+      unsubFirestore();
+      unsubscribeSync();
     };
   }, []);
 
   const myEmployee =
     employees.find((e) => e.id === selectedMyId) || employees[0] || INITIAL_EMPLOYEES[0];
 
+  // Llamada activa actual a mostrar en tarjeta: en tránsito o primera pendiente
+  const currentCall = inTransitCall || activeCall || (pendingCalls.length > 0 ? pendingCalls[0] : null);
+
   // Evaluar si la llamada activa aplica a este asesor:
-  const isAssignedToMe = activeCall?.assignedAssociateId === myEmployee?.id;
-  const haveIRejected = activeCall?.rejectedBy?.includes(myEmployee?.id || '');
-  const isRelevantCall = activeCall && !haveIRejected;
+  const isAssignedToMe = currentCall?.assignedAssociateId === myEmployee?.id;
+  const haveIRejected = currentCall?.rejectedBy?.includes(myEmployee?.id || '');
+  const isRelevantCall = !!currentCall && !haveIRejected;
 
   // Alerta sonora cuando le llega llamada
   useEffect(() => {
-    if (activeCall && activeCall.status === 'calling' && !haveIRejected) {
-      if (prevCallIdRef.current !== activeCall.id) {
-        prevCallIdRef.current = activeCall.id;
+    if (currentCall && currentCall.status === 'calling' && !haveIRejected) {
+      if (prevCallIdRef.current !== currentCall.id) {
+        prevCallIdRef.current = currentCall.id;
         setHasArrivedAtAisle(false);
         if (isAudioEnabled) {
           soundEffects.playEmergencyAlert();
           const originPhrase =
-            activeCall.requesterRole === 'gerente'
+            currentCall.requesterRole === 'gerente'
               ? 'Solicitud urgente de Gerencia'
-              : activeCall.requesterRole === 'cajas'
+              : currentCall.requesterRole === 'cajas'
               ? 'Personal de Cajas solicita refuerzo'
-              : activeCall.requesterRole === 'asesor'
+              : currentCall.requesterRole === 'asesor'
               ? 'Un compañero asesor solicita apoyo'
               : 'Nueva solicitud en piso';
-          voice.speak(`¡Atención ${myEmployee?.name.split(' ')[0]}! ${originPhrase} en ${activeCall.aisle}.`);
+          voice.speak(`¡Atención ${myEmployee?.name.split(' ')[0]}! ${originPhrase} en ${currentCall.aisle}.`);
           soundEffects.showBrowserNotification(
             `🚨 ${originPhrase}`,
-            `${activeCall.reason} en ${activeCall.aisle}`
+            `${currentCall.reason} en ${currentCall.aisle}`
           );
         }
       }
-    } else if (!activeCall) {
+    } else if (!currentCall) {
       prevCallIdRef.current = null;
       setHasArrivedAtAisle(false);
     }
-  }, [activeCall, isAudioEnabled, haveIRejected, myEmployee]);
+  }, [currentCall, isAudioEnabled, haveIRejected, myEmployee]);
 
   // Cronómetro
   useEffect(() => {
-    if (activeCall && !haveIRejected) {
+    if (currentCall && !haveIRejected) {
       const calcElapsed = () => {
-        const diff = Math.floor((Date.now() - (activeCall.createdAt || Date.now())) / 1000);
+        const diff = Math.floor((Date.now() - (currentCall.createdAt || Date.now())) / 1000);
         setElapsedSeconds(Math.max(0, diff));
       };
       calcElapsed();
@@ -121,7 +156,7 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [activeCall, haveIRejected]);
+  }, [currentCall, haveIRejected]);
 
   const handleEnableAudio = async () => {
     soundEffects.playEmergencyAlert();
@@ -131,18 +166,39 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
   };
 
   // 1. ACCIÓN: ACEPTAR Y VOY EN CAMINO
-  const handleAcceptCall = async () => {
-    if (!activeCall) return;
+  const handleAcceptCall = async (callIdToAccept?: string) => {
+    const targetCall = callIdToAccept
+      ? (pendingCalls.find((p) => p.id === callIdToAccept) || currentCall)
+      : currentCall;
+    if (!targetCall) return;
+
     soundEffects.playSuccessChime();
-    await staffSync.acceptCall(activeCall.id, myEmployee.id, myEmployee.name);
     voice.speak('Llamada aceptada. Voy en camino.');
+
+    const acceptedCall: AssistanceAlert = {
+      ...targetCall,
+      status: 'in_transit',
+      assignedAssociateId: myEmployee.id,
+      assignedAssociateName: myEmployee.name,
+      assignedAssociateRole: myEmployee.role,
+    };
+
+    setInTransitCall(acceptedCall);
+    inTransitCallRef.current = acceptedCall;
+    setActiveCall(acceptedCall);
+    staffSync.setActiveCall(acceptedCall);
+
+    // Actualizar en Firebase Firestore con updateDoc:
+    // status="en_camino", advisorName=<nombre del asesor>, estimatedArrival="1-2 minutos"
+    await confirmarQueVoyEnCamino(targetCall.id, myEmployee.name);
+    await staffSync.acceptCall(targetCall.id, myEmployee.id, myEmployee.name);
   };
 
   // 2. ACCIÓN: RECHAZAR PORQUE ESTOY CON OTRO CLIENTE
   const handleConfirmReject = async () => {
-    if (!activeCall) return;
+    if (!currentCall) return;
     soundEffects.playSuccessChime();
-    await staffSync.rejectCall(activeCall.id, myEmployee.id, rejectReason);
+    await staffSync.rejectCall(currentCall.id, myEmployee.id, rejectReason);
     setIsRejectModalOpen(false);
     setJustRejectedNotice(true);
     voice.speak('Llamada rechazada. Notificando al supervisor.');
@@ -164,8 +220,9 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     verificationProof?: AssistanceVerificationProof,
     outcomeCategory?: string
   ) => {
-    if (!activeCall) return;
-    const alertId = activeCall.id;
+    const target = inTransitCall || activeCall || currentCall;
+    if (!target) return;
+    const alertId = target.id;
     const hasProof = !!(
       verificationProof &&
       (verificationProof.photoUrl ||
@@ -198,7 +255,19 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     });
 
     await staffSync.resolveCall(alertId, outcome, notes, verificationProof, outcomeCategory);
+    setInTransitCall(null);
+    inTransitCallRef.current = null;
     setIsOutcomeModalOpen(false);
+
+    // Si quedan llamadas pendientes, pasar a la siguiente
+    const remaining = pendingCalls.filter((p) => p.id !== alertId);
+    if (remaining.length > 0) {
+      setActiveCall(remaining[0]);
+      staffSync.setActiveCall(remaining[0]);
+    } else {
+      setActiveCall(null);
+      staffSync.setActiveCall(null);
+    }
   };
 
   // Cambiar mi estado personal (Disponible, Ocupado, Descanso)
@@ -226,18 +295,19 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
 
   return (
     <div className="w-full max-w-xl md:max-w-2xl mx-auto min-h-screen bg-[#F4F6F9] text-slate-800 shadow-2xl flex flex-col justify-start select-none relative sm:rounded-3xl overflow-hidden pb-12 border border-slate-200">
-      {/* 0. BARRA DE ENLACE ACTIVO CON KIOSCO DE CLIENTES */}
+      {/* 0. BARRA DE ENLACE ACTIVO CON FIREBASE FIRESTORE */}
       <div className="bg-white border-b-2 border-slate-200 px-3.5 py-1.5 flex items-center justify-between text-[11px] shadow-sm">
         <div className="flex items-center space-x-1.5 min-w-0">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-          <span className="text-slate-600 font-bold truncate">
-            Enlazado a Kiosco Clientes: <strong className="text-[#0047BA] font-mono text-[10px]">ais-dev-mfnodpm...</strong>
+          <span className="text-slate-700 font-bold truncate">
+            🔥 Firebase Firestore: <strong className="text-[#0047BA] font-mono text-[10px]">{firebaseConfig.projectId}</strong>
+            <span className="text-slate-500 font-medium ml-1 hidden sm:inline">(Colección: "asistencias")</span>
           </span>
         </div>
         <button
           onClick={handleSimulateTestCall}
           className="shrink-0 bg-[#FFD100] hover:bg-amber-400 active:scale-95 text-[#0047BA] font-black px-2.5 py-1 rounded-lg text-[10px] border border-amber-300 shadow-sm cursor-pointer transition-all flex items-center space-x-1"
-          title="Generar una llamada de prueba para ver cómo entra la alerta con PIN y sonido"
+          title="Crear un documento de prueba en 'asistencias' para ver cómo entra la alerta en tiempo real con PIN y sonido"
         >
           <i className="fa-solid fa-flask"></i>
           <span>Probar Kiosco</span>
@@ -452,11 +522,49 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
               </div>
             )}
 
+            {/* AVISO DE MULTIPLES SOLICITUDES EN COLA */}
+            {pendingCalls.length > 1 && !inTransitCall && (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-amber-900">
+                  <span className="flex items-center gap-1.5">
+                    <i className="fa-solid fa-bell animate-bounce text-amber-600"></i>
+                    <span>{pendingCalls.length} Solicitudes Pendientes en Piso</span>
+                  </span>
+                  <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-mono">
+                    En cola
+                  </span>
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {pendingCalls.map((call) => (
+                    <button
+                      key={call.id}
+                      onClick={() => setActiveCall(call)}
+                      className={`w-full text-left p-2 rounded-xl text-xs flex items-center justify-between transition-all cursor-pointer border ${
+                        currentCall?.id === call.id
+                          ? 'bg-white border-[#0047BA] shadow font-black text-[#0047BA]'
+                          : 'bg-white/70 hover:bg-white border-amber-200 text-slate-700 font-medium'
+                      }`}
+                    >
+                      <div className="truncate min-w-0 pr-2">
+                        <span className="font-bold block truncate">{call.aisle}</span>
+                        <span className="text-[10px] text-slate-500 truncate block">{call.reason}</span>
+                      </div>
+                      {call.customerPin && (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 font-mono text-[10px] font-black rounded border border-amber-300 shrink-0">
+                          PIN: {call.customerPin}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* CASO A: HAY UNA ALERTA ENTRANTE DISPONIBLE */}
-            {isRelevantCall ? (
+            {isRelevantCall && currentCall ? (
               <div
                 className={`rounded-3xl p-5 shadow-xl border-2 space-y-4 animate-in zoom-in-95 duration-200 ${
-                  activeCall.status === 'calling'
+                  currentCall.status === 'calling'
                     ? 'bg-gradient-to-b from-red-50 via-white to-white border-red-500 ring-4 ring-red-500/15'
                     : 'bg-gradient-to-b from-blue-50 via-white to-white border-[#0047BA] ring-4 ring-blue-500/15'
                 }`}
@@ -466,11 +574,11 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                   <div className="flex items-center space-x-2">
                     <span
                       className={`w-3.5 h-3.5 rounded-full ${
-                        activeCall.status === 'calling' ? 'bg-red-500 animate-ping' : 'bg-[#0047BA] animate-pulse'
+                        currentCall.status === 'calling' ? 'bg-red-500 animate-ping' : 'bg-[#0047BA] animate-pulse'
                       }`}
                     ></span>
                     <span className="font-black text-xs uppercase tracking-wider text-slate-900">
-                      {activeCall.status === 'calling'
+                      {currentCall.status === 'calling'
                         ? '🚨 Solicitud Entrante en Piso'
                         : '🏃‍♂️ Atención Aceptada · En Camino'}
                     </span>
@@ -488,10 +596,10 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                     </span>
                     <p className="text-base font-black text-[#0047BA] flex items-center gap-2">
                       <i className="fa-solid fa-location-dot text-red-500 text-lg"></i>
-                      <span>{activeCall.aisle}</span>
+                      <span>{currentCall.aisle}</span>
                     </p>
                     <p className="text-xs text-[#0047BA] font-bold">
-                      Departamento: <strong>{activeCall.storeDepartment}</strong>
+                      Departamento: <strong>{currentCall.storeDepartment}</strong>
                     </p>
                   </div>
 
@@ -500,28 +608,28 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                       <span className="text-[10px] text-slate-400 uppercase font-black block tracking-wider">
                         Motivo de la Solicitud:
                       </span>
-                      {activeCall.requesterRole && (
+                      {currentCall.requesterRole && (
                         <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
-                          activeCall.requesterRole === 'gerente'
+                          currentCall.requesterRole === 'gerente'
                             ? 'bg-purple-100 text-purple-900 border border-purple-300'
-                            : activeCall.requesterRole === 'cajas'
+                            : currentCall.requesterRole === 'cajas'
                             ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                            : activeCall.requesterRole === 'asesor'
+                            : currentCall.requesterRole === 'asesor'
                             ? 'bg-blue-100 text-[#0047BA] border border-blue-300'
                             : 'bg-slate-100 text-slate-700'
                         }`}>
-                          {activeCall.requesterRole === 'gerente' && '👔 De Gerencia'}
-                          {activeCall.requesterRole === 'cajas' && '🛒 De Cajas Express'}
-                          {activeCall.requesterRole === 'asesor' && '🎧 De Asesor Compañero'}
-                          {activeCall.requesterRole === 'personal' && '👤 Personal en Tienda'}
-                          {activeCall.requesterRole === 'cliente' && '👤 Kiosco Cliente'}
+                          {currentCall.requesterRole === 'gerente' && '👔 De Gerencia'}
+                          {currentCall.requesterRole === 'cajas' && '🛒 De Cajas Express'}
+                          {currentCall.requesterRole === 'asesor' && '🎧 De Asesor Compañero'}
+                          {currentCall.requesterRole === 'personal' && '👤 Personal en Tienda'}
+                          {currentCall.requesterRole === 'cliente' && '👤 Kiosco Cliente'}
                         </span>
                       )}
                     </div>
                     <p className="text-xs sm:text-sm font-black text-slate-800">
-                      "{activeCall.reason}"
+                      "{currentCall.reason}"
                     </p>
-                    {activeCall.urgency === 'urgente' && (
+                    {currentCall.urgency === 'urgente' && (
                       <div className="pt-1">
                         <span className="text-[10px] bg-red-600 text-white font-black px-2 py-0.5 rounded-md animate-pulse">
                           🚨 PRIORIDAD ALTA / ATENCIÓN INMEDIATA
@@ -531,7 +639,7 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                   </div>
 
                   {/* PIN del cliente para verificación rápida */}
-                  {activeCall.customerPin && (
+                  {currentCall.customerPin && (
                     <div className="bg-amber-50 border-2 border-amber-300 p-2.5 rounded-2xl flex items-center justify-between text-xs">
                       <div className="flex items-center space-x-2">
                         <span className="w-6 h-6 rounded-lg bg-[#FFD100] text-[#0047BA] flex items-center justify-center font-black text-xs">
@@ -543,12 +651,12 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                         </div>
                       </div>
                       <span className="font-mono font-black text-base text-[#0047BA] bg-white px-2.5 py-0.5 rounded-xl border border-amber-300">
-                        {activeCall.customerPin}
+                        {currentCall.customerPin}
                       </span>
                     </div>
                   )}
 
-                  {activeCall.dispatchedByAdmin && (
+                  {currentCall.dispatchedByAdmin && (
                     <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-200 text-[11px] text-[#0047BA] flex items-center space-x-2 font-bold">
                       <i className="fa-solid fa-headset text-amber-500 text-sm"></i>
                       <span>Asignada directamente por el <strong>Supervisor de Tienda</strong></span>
@@ -558,12 +666,12 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
 
                 {/* BOTONES DE DECISIÓN DEL ASESOR */}
                 <div className="pt-2 border-t border-slate-200 space-y-2.5">
-                  {activeCall.status === 'calling' ? (
+                  {currentCall.status === 'calling' ? (
                     <>
                       {/* BOTÓN 1: ACEPTAR Y VOY EN CAMINO */}
                       <button
                         type="button"
-                        onClick={handleAcceptCall}
+                        onClick={() => handleAcceptCall()}
                         className="w-full py-4 px-4 bg-[#0047BA] hover:bg-[#003899] text-white font-black rounded-2xl text-sm shadow-xl flex items-center justify-center space-x-2 active:scale-95 transition-all cursor-pointer border-2 border-[#003899] group"
                       >
                         <i className="fa-solid fa-person-running text-xl text-[#FFD100] group-hover:scale-110 transition-transform"></i>

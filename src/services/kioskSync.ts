@@ -1,6 +1,6 @@
 import { Employee, AssistanceAlert, ResolutionOutcome, AssistanceVerificationProof } from '../types';
 import { getGamificationLevel, calculatePointsForAssistance } from './gamification';
-import { obtenerSolicitudesDeClientes, confirmarQueVoyEnCamino } from './externalKioskService';
+import { suscribirAsistenciasPendientes, confirmarQueVoyEnCamino, resolverAsistenciaEnFirestore } from './externalKioskService';
 
 export const INITIAL_EMPLOYEES: Employee[] = [
   {
@@ -124,6 +124,7 @@ class StaffSyncService {
   private resolvedAlertIds: Set<string> = new Set();
   private eventSource: EventSource | null = null;
   private isConnectedToServer: boolean = false;
+  private firestoreUnsubscribe: (() => void) | null = null;
 
   constructor() {
     this.resolvedAlertIds = this.loadResolvedIds();
@@ -157,6 +158,53 @@ class StaffSyncService {
 
       // Iniciar conexión permanente en tiempo real (Server-Sent Events) para sincronizar entre diferentes computadoras
       this.initRealtimeStream();
+
+      // Iniciar listener en tiempo real de Firebase Firestore (colección asistencias)
+      this.initFirestoreListener();
+    }
+  }
+
+  private initFirestoreListener() {
+    if (typeof window === 'undefined') return;
+    try {
+      if (this.firestoreUnsubscribe) {
+        this.firestoreUnsubscribe();
+      }
+      this.firestoreUnsubscribe = suscribirAsistenciasPendientes(
+        (pendientes) => {
+          this.handleFirestorePendientes(pendientes);
+        },
+        (err) => {
+          console.warn('Firestore asistencias onSnapshot error:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('No se pudo inicializar listener de Firestore:', err);
+    }
+  }
+
+  private handleFirestorePendientes(pendientes: AssistanceAlert[]) {
+    if (!pendientes || pendientes.length === 0) {
+      // Si la llamada activa actual era de Firestore y ya no está pendiente ni en camino
+      if (this.state.activeCall && this.state.activeCall.status === 'calling') {
+        this.state.activeCall = null;
+        this.saveState();
+      }
+      return;
+    }
+
+    // Tomar la solicitud más reciente que no haya sido resuelta
+    const latest = pendientes.find((p) => !this.resolvedAlertIds.has(p.id));
+    if (latest) {
+      const isNewOrDifferent = !this.state.activeCall || this.state.activeCall.id !== latest.id;
+      if (isNewOrDifferent) {
+        this.state.activeCall = latest;
+        this.state.history = [
+          latest,
+          ...this.state.history.filter((a) => a.id !== latest.id),
+        ].slice(0, 40);
+        this.saveState();
+      }
     }
   }
 
@@ -384,6 +432,11 @@ class StaffSyncService {
     return this.state;
   }
 
+  public setActiveCall(call: AssistanceAlert | null): void {
+    this.state.activeCall = call;
+    this.saveState();
+  }
+
   public async fetchAlerts(): Promise<{ success: boolean; activeCall: AssistanceAlert | null; history: AssistanceAlert[]; employees: Employee[] }> {
     try {
       const res = await fetch('/api/assistance/alerts');
@@ -402,8 +455,6 @@ class StaffSyncService {
             this.state.activeCall = null;
           } else if (data.activeCall) {
             this.state.activeCall = data.activeCall;
-          } else {
-            this.state.activeCall = null;
           }
 
           if (data.history) this.state.history = data.history;
@@ -425,35 +476,6 @@ class StaffSyncService {
             });
           }
           this.saveState();
-
-          // Consultar solicitudes periódicamente desde la app externa de Kiosco Cliente
-          try {
-            const extCalls = await obtenerSolicitudesDeClientes();
-            if (extCalls && extCalls.length > 0) {
-              const pending = extCalls.find((c: any) => !this.resolvedAlertIds.has(c.id));
-              if (pending && (!this.state.activeCall || this.state.activeCall.id !== pending.id)) {
-                const mappedAlert: AssistanceAlert = {
-                  id: pending.id,
-                  timestamp: pending.timestamp || new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-                  createdAt: Date.now(),
-                  status: 'calling',
-                  aisle: pending.aisle || 'Pasillo de Tienda',
-                  storeDepartment: pending.department || 'Piso de Venta',
-                  reason: pending.reason || 'Atención solicitada en Kiosco Cliente',
-                  customerPin: pending.customerPin,
-                  estimatedArrivalSeconds: 60,
-                  requesterRole: 'cliente',
-                  requesterName: 'Kiosco Cliente Externo',
-                  urgency: 'alta'
-                };
-                this.state.activeCall = mappedAlert;
-                this.state.history = [mappedAlert, ...this.state.history.filter(a => a.id !== mappedAlert.id)].slice(0, 40);
-                this.saveState();
-              }
-            }
-          } catch {
-            // ignore
-          }
 
           return {
             success: true,
@@ -489,6 +511,7 @@ class StaffSyncService {
     requesterName?: string;
     urgency?: 'normal' | 'alta' | 'urgente';
     supportType?: string;
+    customerPin?: string;
   }): Promise<AssistanceAlert> {
     const now = new Date();
     const newAlertId = `CALL-${Date.now()}`;
@@ -521,7 +544,7 @@ class StaffSyncService {
       assignedAssociateId: assigned?.id || 'emp-01',
       estimatedArrivalSeconds: 30,
       rejectedBy: [],
-      customerPin: Math.floor(1000 + Math.random() * 9000).toString(),
+      customerPin: payload.customerPin || Math.floor(1000 + Math.random() * 9000).toString(),
     };
 
     // Actualizar localmente inmediatamente
@@ -802,6 +825,11 @@ class StaffSyncService {
     // ELIMINAR DE ALERTA ACTIVA INMEDIATAMENTE
     this.state.activeCall = null;
     this.saveState();
+
+    // Actualizar documento en Firebase Firestore
+    if (targetId) {
+      resolverAsistenciaEnFirestore(targetId, outcome).catch(() => {});
+    }
 
     // Enviar confirmación al backend server
     try {

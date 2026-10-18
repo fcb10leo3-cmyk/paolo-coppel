@@ -57,7 +57,7 @@ export default function App() {
               <div className="flex items-center space-x-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse"></span>
                 <span className="text-[10px] text-blue-100 font-medium leading-none">
-                  App de Asesores · Enlace con Kiosco
+                  App Asesores · Firebase Firestore en Vivo
                 </span>
               </div>
             </div>
