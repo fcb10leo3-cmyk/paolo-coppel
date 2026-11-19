@@ -58,6 +58,15 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
 
   const prevCallIdRef = useRef<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [nowMs, setNowMs] = useState<number>(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const waitLabel = (createdAt?: number) => {
+    const s = Math.max(0, Math.floor((nowMs - (createdAt || nowMs)) / 1000));
+    return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+  };
 
   // Sincronización en tiempo real vía Firebase Firestore (onSnapshot) y staffSync
   useEffect(() => {
@@ -192,6 +201,8 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     // status="en_camino", advisorName=<nombre del asesor>, estimatedArrival="1-2 minutos"
     await confirmarQueVoyEnCamino(targetCall.id, myEmployee.name);
     await staffSync.acceptCall(targetCall.id, myEmployee.id, myEmployee.name);
+    // Ocupado automático mientras atiendo
+    await staffSync.updateEmployeeStatus(myEmployee.id, 'ocupado');
   };
 
   // 2. ACCIÓN: RECHAZAR PORQUE ESTOY CON OTRO CLIENTE
@@ -255,6 +266,8 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
     });
 
     await staffSync.resolveCall(alertId, outcome, notes, verificationProof, outcomeCategory);
+    // Al terminar, vuelvo a En Piso
+    await staffSync.updateEmployeeStatus(myEmployee.id, 'en_piso');
     setInTransitCall(null);
     inTransitCallRef.current = null;
     setIsOutcomeModalOpen(false);
@@ -535,7 +548,7 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                   </span>
                 </div>
                 <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                  {pendingCalls.map((call) => (
+                  {pendingCalls.map((call, idx) => (
                     <button
                       key={call.id}
                       onClick={() => setActiveCall(call)}
@@ -546,7 +559,7 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                       }`}
                     >
                       <div className="truncate min-w-0 pr-2">
-                        <span className="font-bold block truncate">{call.aisle}</span>
+                        <span className="font-bold block truncate">#{idx + 1} · {call.aisle} · espera {waitLabel(call.createdAt)}</span>
                         <span className="text-[10px] text-slate-500 truncate block">{call.reason}</span>
                       </div>
                       {call.customerPin && (
@@ -637,6 +650,17 @@ export const StaffAttendantView: React.FC<StaffAttendantViewProps> = ({
                       </div>
                     )}
                   </div>
+
+                  {(currentCall.product || currentCall.creditStatus) && (
+                    <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm space-y-1 text-xs">
+                      {currentCall.product && (
+                        <p><span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">Producto de interés</span><strong className="text-slate-800">{currentCall.product}</strong></p>
+                      )}
+                      {currentCall.creditStatus && (
+                        <p><span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">Estatus de crédito</span><strong className="text-[#0047BA]">{currentCall.creditStatus}</strong></p>
+                      )}
+                    </div>
+                  )}
 
                   {/* PIN del cliente para verificación rápida */}
                   {currentCall.customerPin && (
