@@ -41,6 +41,8 @@ export interface FirestoreAsistenciaDoc {
   requesterRole?: string;
   requesterName?: string;
   urgency?: string;
+  product?: string;
+  creditStatus?: string;
 }
 
 // 1. Escuchar solicitudes en tiempo real vía onSnapshot sobre la colección "asistencias",
@@ -88,14 +90,16 @@ export function suscribirAsistenciasPendientes(
           requesterRole: (data.requesterRole as any) || 'cliente',
           requesterName: data.requesterName || 'Kiosco de Cliente',
           urgency: (data.urgency as any) || 'alta',
+          product: data.product ? String(data.product) : undefined,
+          creditStatus: data.creditStatus ? String(data.creditStatus) : undefined,
         };
 
         pendientes.push(alertItem);
       }
     });
 
-    // Ordenar de más reciente a más antiguo
-    pendientes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    // Fila por tiempo de espera: el que lleva más tiempo esperando va primero
+    pendientes.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
     // Console logs requeridos para cada llamada
     pendientes.forEach((llamada) => {
