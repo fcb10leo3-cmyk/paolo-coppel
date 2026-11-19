@@ -52,6 +52,8 @@ export interface AssistanceAlert {
   reason: string;
   requesterRole?: 'personal' | 'gerente' | 'asesor' | 'cajas' | 'cliente';
   requesterName?: string;
+  product?: string;
+  creditStatus?: string;
   urgency?: 'normal' | 'alta' | 'urgente';
   supportType?: string;
   preferredEmployeeId?: string;
